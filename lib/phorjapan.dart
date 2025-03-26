@@ -15,7 +15,7 @@ class PhOrJpScreen extends StatelessWidget {
       String? idNumber = prefs.getString('IDNumber');
       if (idNumber != null && idNumber.isNotEmpty) {
         // Navigate directly to WebView
-        _navigateWithTransition(context, SoftwareWebViewScreen(linkID: 1));
+        _navigateWithTransition(context, SoftwareWebViewScreen(linkID: 3));
       } else {
         // Navigate to IdInputDialog
         _navigateWithTransition(context, IdInputDialog());
@@ -25,7 +25,7 @@ class PhOrJpScreen extends StatelessWidget {
       String? idNumber = prefs.getString('IDNumberJP');
       if (idNumber != null && idNumber.isNotEmpty) {
         // Navigate directly to WebViewJP
-        _navigateWithTransition(context, SoftwareWebViewScreenJP(linkID: 1));
+        _navigateWithTransition(context, SoftwareWebViewScreenJP(linkID: 3));
       } else {
         // Navigate to IdInputDialogJP
         _navigateWithTransition(context, IdInputDialogJP());
