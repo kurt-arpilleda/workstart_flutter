@@ -1,7 +1,7 @@
 name: workstart_finish
 description: "Work Start & Finish web to app"
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   sdk: ^3.7.2
@@ -16,13 +16,9 @@ dependencies:
   fluttertoast: ^8.2.12
   path_provider: ^2.1.5
   open_file: ^3.5.10
-  flutter_downloader: ^1.12.0
-  url_launcher: ^6.3.1
   package_info_plus: ^8.3.0
   permission_handler: ^11.4.0
-  percent_indicator: ^4.2.4
   dio: ^5.8.0+1
-  flutter_file_downloader: ^2.1.0
 
 dev_dependencies:
   flutter_test:
