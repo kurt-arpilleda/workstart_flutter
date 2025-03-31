@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../api_service.dart';
 import 'api_serviceJP.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import '../auto_update.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
+import 'package:unique_identifier/unique_identifier.dart';
 
 class SoftwareWebViewScreenJP extends StatefulWidget {
   final int linkID;
@@ -19,18 +21,18 @@ class SoftwareWebViewScreenJP extends StatefulWidget {
 
 class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
   late final WebViewController _controller;
-  final ApiServiceJP apiService = ApiServiceJP();
+  final ApiService apiService = ApiService();
+  final ApiServiceJP apiServiceJP = ApiServiceJP();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   String? _webUrl;
-  final TextEditingController _idController = TextEditingController();
-  String? _savedIdNumber;
   String? _profilePictureUrl;
   String? _firstName;
   String? _surName;
+  String? _idNumber; // Added to store ID number from device
   bool _isLoading = true;
-  int? _currentLanguageFlag; // Track the current language flag
-  double _progress = 0; // Track the loading progress
-  String? _phOrJp; // Track the current country (ph or jp)
+  int? _currentLanguageFlag;
+  double _progress = 0;
+  String? _phOrJp;
 
   @override
   void initState() {
@@ -60,13 +62,31 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
       );
 
     _fetchAndLoadUrl();
-    _loadIdNumber();
-    _fetchProfile();
     _loadCurrentLanguageFlag();
     _loadPhOrJp();
+    _fetchDeviceInfo(); // New method to fetch device info and profile
 
     // Check for updates
     AutoUpdate.checkForUpdate(context);
+  }
+
+  Future<void> _fetchDeviceInfo() async {
+    try {
+      String? deviceId = await UniqueIdentifier.serial;
+      if (deviceId == null) {
+        throw Exception("Unable to get device ID");
+      }
+
+      final deviceResponse = await apiServiceJP.checkDeviceId(deviceId);
+      if (deviceResponse['success'] == true && deviceResponse['idNumber'] != null) {
+        setState(() {
+          _idNumber = deviceResponse['idNumber'];
+        });
+        await _fetchProfile(_idNumber!);
+      }
+    } catch (e) {
+      print("Error fetching device info: $e");
+    }
   }
 
   Future<void> _loadPhOrJp() async {
@@ -76,42 +96,27 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
     });
   }
 
-  Future<void> _loadIdNumber() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    _savedIdNumber = prefs.getString('IDNumberJP');
-    if (_savedIdNumber != null) {
-      setState(() {
-        _idController.text = _savedIdNumber!;
-      });
-    }
-  }
+  Future<void> _fetchProfile(String idNumber) async {
+    try {
+      final profileData = await apiServiceJP.fetchProfile(idNumber);
+      if (profileData["success"] == true) {
+        String profilePictureFileName = profileData["picture"];
 
-  Future<void> _fetchProfile() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? idNumber = prefs.getString('IDNumberJP');
+        String primaryUrl = "${ApiServiceJP.apiUrls[0]}V4/11-A%20Employee%20List%20V2/profilepictures/$profilePictureFileName";
+        bool isPrimaryUrlValid = await _isImageAvailable(primaryUrl);
 
-    if (idNumber != null) {
-      try {
-        final profileData = await apiService.fetchProfile(idNumber);
-        if (profileData["success"] == true) {
-          String profilePictureFileName = profileData["picture"];
+        String fallbackUrl = "${ApiServiceJP.apiUrls[1]}V4/11-A%20Employee%20List%20V2/profilepictures/$profilePictureFileName";
+        bool isFallbackUrlValid = await _isImageAvailable(fallbackUrl);
 
-          String primaryUrl = "${ApiServiceJP.apiUrls[0]}V4/11-A%20Employee%20List%20V2/profilepictures/$profilePictureFileName";
-          bool isPrimaryUrlValid = await _isImageAvailable(primaryUrl);
-
-          String fallbackUrl = "${ApiServiceJP.apiUrls[1]}V4/11-A%20Employee%20List%20V2/profilepictures/$profilePictureFileName";
-          bool isFallbackUrlValid = await _isImageAvailable(fallbackUrl);
-
-          setState(() {
-            _firstName = profileData["firstName"];
-            _surName = profileData["surName"];
-            _profilePictureUrl = isPrimaryUrlValid ? primaryUrl : isFallbackUrlValid ? fallbackUrl : null;
-            _currentLanguageFlag = profileData["languageFlag"];
-          });
-        }
-      } catch (e) {
-        print("Error fetching profile: $e");
+        setState(() {
+          _firstName = profileData["firstName"];
+          _surName = profileData["surName"];
+          _profilePictureUrl = isPrimaryUrlValid ? primaryUrl : isFallbackUrlValid ? fallbackUrl : null;
+          _currentLanguageFlag = profileData["languageFlag"];
+        });
       }
+    } catch (e) {
+      print("Error fetching profile: $e");
     }
   }
 
@@ -124,90 +129,9 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
     }
   }
 
-
-  Future<void> _saveIdNumber() async {
-    String newIdNumber = _idController.text.trim();
-
-    if (newIdNumber.isEmpty) {
-      setState(() {
-        _idController.text = _savedIdNumber ?? '';
-      });
-
-      Fluttertoast.showToast(
-        msg: "ID番号を空にすることはできません！",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
-        fontSize: 16.0,
-      );
-      return;
-    }
-
-    if (newIdNumber == _savedIdNumber) {
-      Fluttertoast.showToast(
-        msg: "まずID番号を編集してください！",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.orange,
-        textColor: Colors.white,
-        fontSize: 16.0,
-      );
-      return;
-    }
-
-    try {
-      bool idExists = await apiService.checkIdNumber(newIdNumber);
-
-      if (idExists) {
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setString('IDNumberJP', newIdNumber);
-        _savedIdNumber = newIdNumber;
-
-        Fluttertoast.showToast(
-          msg: "ID番号が正常に保存されました！",
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.BOTTOM,
-          backgroundColor: Colors.green,
-          textColor: Colors.white,
-          fontSize: 16.0,
-        );
-
-        _fetchAndLoadUrl();
-        _fetchProfile(); // Refresh profile data
-      } else {
-        Fluttertoast.showToast(
-          msg: "このID番号は従業員データベースに存在しません。",
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.BOTTOM,
-          backgroundColor: Colors.red,
-          textColor: Colors.white,
-          fontSize: 16.0,
-        );
-
-        setState(() {
-          _idController.text = _savedIdNumber ?? '';
-        });
-      }
-    } catch (e) {
-      Fluttertoast.showToast(
-        msg: "ID番号の確認に失敗しました。",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
-        fontSize: 16.0,
-      );
-
-      setState(() {
-        _idController.text = _savedIdNumber ?? '';
-      });
-    }
-  }
-
   Future<void> _fetchAndLoadUrl() async {
     try {
-      String url = await apiService.fetchSoftwareLink(widget.linkID);
+      String url = await apiServiceJP.fetchSoftwareLink(widget.linkID);
       if (mounted) {
         setState(() {
           _webUrl = url;
@@ -227,19 +151,16 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
   }
 
   Future<void> _updateLanguageFlag(int flag) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? idNumber = prefs.getString('IDNumberJP');
-
-    if (idNumber != null) {
+    if (_idNumber != null) {
       setState(() {
         _currentLanguageFlag = flag;
       });
       try {
-        await apiService.updateLanguageFlag(idNumber, flag);
+        await apiServiceJP.updateLanguageFlag(_idNumber!, flag);
+        SharedPreferences prefs = await SharedPreferences.getInstance();
         await prefs.setInt('languageFlag', flag);
 
         String? currentUrl = await _controller.currentUrl();
-
         if (currentUrl != null) {
           _controller.loadRequest(Uri.parse(currentUrl));
         } else {
@@ -252,48 +173,79 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
   }
 
   Future<void> _updatePhOrJp(String value) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('phorjp', value);
-    setState(() {
-      _phOrJp = value;
-    });
-
-    String? idNumber = prefs.getString('IDNumber');
-    String? idNumberJP = prefs.getString('IDNumberJP');
-
-    if (value == "ph") {
-      if (idNumber == null) {
-        Navigator.pushReplacementNamed(context, '/idInput');
-      } else {
-        Navigator.pushReplacementNamed(context, '/webView');
+    try {
+      String? deviceId = await UniqueIdentifier.serial;
+      if (deviceId == null) {
+        throw Exception("Unable to get device ID");
       }
-    } else if (value == "jp") {
-      if (idNumberJP == null) {
-        Navigator.pushReplacementNamed(context, '/idInputJP');
-      } else {
+
+      // Get the appropriate service based on the selected country
+      dynamic service = value == "jp" ? apiServiceJP : apiService;
+
+      // Check device ID for the selected country
+      final deviceResponse = await service.checkDeviceId(deviceId);
+
+      if (deviceResponse['success'] != true || deviceResponse['idNumber'] == null) {
+        // Show dialog if not registered in the selected country's system
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text("Login Required"),
+              content: Text(value == "jp"
+                  ? "Please login to ARK LOG JP App first"
+                  : "Please login to ARK LOG PH App first"),
+              actions: <Widget>[
+                TextButton(
+                  child: Text("OK"),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ],
+            );
+          },
+        );
+        return;
+      }
+
+      // If registered, proceed with the update
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString('phorjp', value);
+      setState(() {
+        _phOrJp = value;
+      });
+
+      if (value == "ph") {
+        Navigator.pushReplacementNamed(context, '/webView');
+      } else if (value == "jp") {
         Navigator.pushReplacementNamed(context, '/webViewJP');
       }
+    } catch (e) {
+      print("Error updating country preference: $e");
+      Fluttertoast.showToast(
+        msg: "Error checking device registration: ${e.toString()}",
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.BOTTOM,
+      );
     }
   }
-
   Future<bool> _onWillPop() async {
     if (await _controller.canGoBack()) {
       _controller.goBack();
-      return false; // Prevent the app from popping the current screen
+      return false;
     } else {
-      return true; // Allow the app to pop the current screen
+      return true;
     }
   }
-
   Future<void> _showInputMethodPicker() async {
     try {
       if (Platform.isAndroid) {
         const MethodChannel channel = MethodChannel('input_method_channel');
         await channel.invokeMethod('showInputMethodPicker');
       } else {
-        // iOS doesn't have this capability
         Fluttertoast.showToast(
-          msg: "キーボードの選択はAndroidでのみ利用可能です。",
+          msg: "Keyboard selection is only available on Android",
           toastLength: Toast.LENGTH_SHORT,
           gravity: ToastGravity.BOTTOM,
         );
@@ -302,6 +254,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
       debugPrint("Error showing input method picker: $e");
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -348,9 +301,9 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                     ),
                     onPressed: () {
                       if (Platform.isIOS) {
-                        exit(0); // Terminate the app on iOS
+                        exit(0);
                       } else {
-                        SystemNavigator.pop(); // Navigate back on Android
+                        SystemNavigator.pop();
                       }
                     },
                   ),
@@ -397,12 +350,21 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                                 Text(
                                   _firstName != null && _surName != null
                                       ? "$_firstName $_surName"
-                                      : "ユーザー名",
+                                      : "User Name",
                                   style: TextStyle(
                                       color: Colors.white,
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold),
                                 ),
+                                SizedBox(height: 5),
+                                if (_idNumber != null)
+                                  Text(
+                                    "ID: $_idNumber",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -412,7 +374,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                             child: Row(
                               children: [
                                 Text(
-                                  "言語",
+                                  "Language",
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -459,69 +421,25 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                               ],
                             ),
                           ),
-                          SizedBox(height: 10),
+                          SizedBox(height: 20),
                           Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            padding: const EdgeInsets.only(left: 16.0),
+                            child: Row(
                               children: [
                                 Text(
-                                  "ユーザー",
+                                  "Keyboard",
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                SizedBox(height: 5),
-                                TextField(
-                                  controller: _idController,
-                                  decoration: InputDecoration(
-                                    hintText: "ID番号",
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(height: 10),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: _saveIdNumber,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Color(0xFF2053B3),
-                                      padding: EdgeInsets.symmetric(vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      "保存",
-                                      style: TextStyle(color: Colors.white, fontSize: 16),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(height: 20), // Added spacing here
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 0), // Aligned with other labels
-                                  child: Row(
-                                    children: [
-                                      Text(
-                                        "キーボード",
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Spacer(),
-                                      IconButton(
-                                        icon: Icon(Icons.keyboard, size: 28), // Made icon bigger
-                                        iconSize: 28,
-                                        onPressed: () {
-                                          _showInputMethodPicker();
-                                        },
-                                      ),
-                                    ],
-                                  ),
+                                Spacer(),
+                                IconButton(
+                                  icon: Icon(Icons.keyboard, size: 28),
+                                  iconSize: 28,
+                                  onPressed: () {
+                                    _showInputMethodPicker();
+                                  },
                                 ),
                               ],
                             ),
@@ -535,7 +453,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                     child: Row(
                       children: [
                         Text(
-                          "国",
+                          "Country",
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -605,4 +523,3 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
     );
   }
 }
-
