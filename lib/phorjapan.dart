@@ -88,13 +88,15 @@ class _PhOrJpScreenState extends State<PhOrJpScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text("Login Required"),
+          title:  Text(country == 'ph'
+              ? "Login Required"
+              : "ログインが必要です"),
           content: Text(country == 'ph'
               ? "Please login to ARK LOG PH App first"
-              : "Please login to ARK LOG JP App first"),
+              : "まず、ARK LOG JPアプリにログインしてください。"),
           actions: [
             TextButton(
-              child: Text("Back"),
+              child: Text("OK"),
               onPressed: () {
                 Navigator.of(context).pop();
                 _isDialogShowing = false;

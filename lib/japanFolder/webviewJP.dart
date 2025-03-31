@@ -323,6 +323,24 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                   },
                 ),
               ),
+              title: _idNumber != null
+                  ? Text(
+                "ID: $_idNumber",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,  // Medium weight
+                  letterSpacing: 0.5,          // Slightly spaced out letters
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 2,
+                      offset: Offset(1, 1),
+                    ),
+                  ],
+                ),
+              )
+                  : null,
               actions: [
                 Padding(
                   padding: const EdgeInsets.only(right: 10.0),
@@ -405,6 +423,15 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: 14,
+                                      fontWeight: FontWeight.w500,  // Medium weight
+                                      letterSpacing: 0.5,          // Slightly spaced out letters
+                                      shadows: [
+                                        Shadow(
+                                          color: Colors.black.withOpacity(0.2),
+                                          blurRadius: 2,
+                                          offset: Offset(1, 1),
+                                        ),
+                                      ],
                                     ),
                                   ),
                               ],
