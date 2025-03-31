@@ -261,7 +261,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                 height: 26,
               ),
               SizedBox(width: 8),
-              Text("Login Required",
+              Text("ログインが必要です",
                 overflow: TextOverflow.ellipsis,
                 softWrap: false,
                 style: TextStyle(fontSize: 20),
@@ -269,8 +269,8 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
             ],
           ),
           content: Text(country == 'ph'
-              ? "Please login to ARK LOG PH App first"
-              : "Please login to ARK LOG JP App first"),
+              ? "まず、ARK LOG PHアプリにログインしてください。"
+              : "まず、ARK LOG JPアプリにログインしてください。"),
           actions: [
             TextButton(
               child: Text("OK"),
@@ -424,7 +424,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                                 Text(
                                   _firstName != null && _surName != null
                                       ? "$_firstName $_surName"
-                                      : "User Name",
+                                      : "ユーザー名",
                                   style: TextStyle(
                                       color: Colors.white,
                                       fontSize: 18,
@@ -457,7 +457,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                             child: Row(
                               children: [
                                 Text(
-                                  "Language",
+                                  "言語",
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -510,7 +510,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                             child: Row(
                               children: [
                                 Text(
-                                  "Keyboard",
+                                  "キーボード",
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -536,7 +536,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                     child: Row(
                       children: [
                         Text(
-                          "Country",
+                          "国",
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
