@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:flutter/material.dart';
+import 'package:unique_identifier/unique_identifier.dart';
 
 class ApiService {
   static const List<String> apiUrls = [
@@ -23,30 +24,18 @@ class ApiService {
     );
   }
 
-  Future<http.Response> _makeRequest(Uri uri, {Map<String, String>? headers, int retries = maxRetries}) async {
-    for (int attempt = 1; attempt <= retries; attempt++) {
-      for (String apiUrl in apiUrls) {
-        try {
-          final fullUri = Uri.parse(apiUrl).resolve(uri.toString());
-          final response = await http.get(fullUri, headers: headers).timeout(requestTimeout);
-          return response;
-        } catch (e) {
-          // print("Error accessing $apiUrl on attempt $attempt: $e");
-        }
-      }
-      // If all servers fail, wait for an exponential backoff delay before retrying
-      if (attempt < retries) {
-        final delay = initialRetryDelay * (1 << (attempt - 1)); // Exponential backoff
-        // print("Waiting for ${delay.inSeconds} seconds before retrying...");
-        await Future.delayed(delay);
-      }
-    }
-    throw Exception("All API URLs are unreachable after $retries attempts");
-  }
-
   Future<String> fetchSoftwareLink(int linkID) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? idNumber = prefs.getString('IDNumber');
+    String? deviceId = await UniqueIdentifier.serial;
+    if (deviceId == null) {
+      throw Exception("Unable to get device ID");
+    }
+
+    // First get the ID number associated with this device
+    final deviceResponse = await checkDeviceId(deviceId);
+    if (!deviceResponse['success']) {
+      throw Exception("Device not registered or no ID number associated");
+    }
+    String? idNumber = deviceResponse['idNumber'];
 
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       for (int i = 0; i < apiUrls.length; i++) {
@@ -71,27 +60,25 @@ class ApiService {
         } catch (e) {
           String errorMessage = "Error accessing $apiUrl on attempt $attempt";
           print(errorMessage);
-          // _showToast(errorMessage);
 
-          // If the first URL fails and there's another URL to try, show a fallback message
           if (i == 0 && apiUrls.length > 1) {
-            // _showToast("Falling back to ${apiUrls[1]}");
+            print("Falling back to ${apiUrls[1]}");
           }
         }
       }
-      // If all servers fail, wait for an exponential backoff delay before retrying
+
       if (attempt < maxRetries) {
-        final delay = initialRetryDelay * (1 << (attempt - 1)); // Exponential backoff
-        String retryMessage = "Waiting for ${delay.inSeconds} seconds before retrying...";
-        print(retryMessage);
-        // _showToast(retryMessage);
+        final delay = initialRetryDelay * (1 << (attempt - 1));
+        print("Waiting for ${delay.inSeconds} seconds before retrying...");
         await Future.delayed(delay);
       }
     }
+
     String finalError = "All API URLs are unreachable after $maxRetries attempts";
     _showToast(finalError);
     throw Exception(finalError);
   }
+
   Future<bool> checkIdNumber(String idNumber) async {
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       for (String apiUrl in apiUrls) {
@@ -183,6 +170,27 @@ class ApiService {
       if (attempt < maxRetries) {
         final delay = initialRetryDelay * (1 << (attempt - 1)); // Exponential backoff
         // print("Waiting for ${delay.inSeconds} seconds before retrying...");
+        await Future.delayed(delay);
+      }
+    }
+    throw Exception("Both API URLs are unreachable after $maxRetries attempts");
+  }
+  Future<Map<String, dynamic>> checkDeviceId(String deviceId) async {
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      for (String apiUrl in apiUrls) {
+        try {
+          final uri = Uri.parse("${apiUrl}V4/Others/Kurt/ArkLinkAPI/kurt_checkDeviceId.php?deviceID=$deviceId");
+          final response = await http.get(uri).timeout(requestTimeout);
+
+          if (response.statusCode == 200) {
+            return jsonDecode(response.body);
+          }
+        } catch (e) {
+          print("Error accessing $apiUrl on attempt $attempt: $e");
+        }
+      }
+      if (attempt < maxRetries) {
+        final delay = initialRetryDelay * (1 << (attempt - 1));
         await Future.delayed(delay);
       }
     }

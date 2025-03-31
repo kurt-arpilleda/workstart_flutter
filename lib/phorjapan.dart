@@ -1,36 +1,65 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'id_input_dialog.dart'; // For Philippines
-import 'webview.dart'; // For Philippines
-import 'japanFolder/id_input_dialogJP.dart'; // For Japan
-import 'japanFolder/webviewJP.dart'; // For Japan
+import 'package:unique_identifier/unique_identifier.dart';
+import 'webview.dart';
+import 'japanFolder/webviewJP.dart';
+import 'api_service.dart';
+import 'japanFolder/api_serviceJP.dart';
 
 class PhOrJpScreen extends StatelessWidget {
   Future<void> _setPreference(String value, BuildContext context) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('phorjp', value);
 
-    if (value == 'ph') {
-      // Check if IDNumber already exists in SharedPreferences
-      String? idNumber = prefs.getString('IDNumber');
-      if (idNumber != null && idNumber.isNotEmpty) {
-        // Navigate directly to WebView
-        _navigateWithTransition(context, SoftwareWebViewScreen(linkID: 3));
-      } else {
-        // Navigate to IdInputDialog
-        _navigateWithTransition(context, IdInputDialog());
+    try {
+      String? deviceId = await UniqueIdentifier.serial;
+      if (deviceId == null) {
+        _showLoginDialog(context);
+        return;
       }
-    } else if (value == 'jp') {
-      // Check if IDNumber already exists in SharedPreferences
-      String? idNumber = prefs.getString('IDNumberJP');
-      if (idNumber != null && idNumber.isNotEmpty) {
-        // Navigate directly to WebViewJP
-        _navigateWithTransition(context, SoftwareWebViewScreenJP(linkID: 3));
-      } else {
-        // Navigate to IdInputDialogJP
-        _navigateWithTransition(context, IdInputDialogJP());
+
+      dynamic response;
+
+      if (value == 'ph') {
+        final apiService = ApiService();
+        response = await apiService.checkDeviceId(deviceId);
+      } else if (value == 'jp') {
+        final apiServiceJP = ApiServiceJP();
+        response = await apiServiceJP.checkDeviceId(deviceId);
       }
+
+      if (response['success'] == true) {
+        if (value == 'ph') {
+          _navigateWithTransition(context, SoftwareWebViewScreen(linkID: 3));
+        } else if (value == 'jp') {
+          _navigateWithTransition(context, SoftwareWebViewScreenJP(linkID: 3));
+        }
+      } else {
+        _showLoginDialog(context);
+      }
+    } catch (e) {
+      _showLoginDialog(context);
     }
+  }
+
+  void _showLoginDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Login Required"),
+          content: Text("Please login to ARK LOG App first"),
+          actions: [
+            TextButton(
+              child: Text("Back"),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _navigateWithTransition(BuildContext context, Widget screen) {
@@ -39,7 +68,7 @@ class PhOrJpScreen extends StatelessWidget {
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => screen,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          const begin = Offset(1.0, 0.0); // Slide from right
+          const begin = Offset(1.0, 0.0);
           const end = Offset.zero;
           const curve = Curves.easeInOut;
 
@@ -51,16 +80,13 @@ class PhOrJpScreen extends StatelessWidget {
             child: child,
           );
         },
-        transitionDuration: Duration(milliseconds: 300), // Adjust duration for smoothness
+        transitionDuration: Duration(milliseconds: 300),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-
     return Dialog(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16.0),
@@ -74,7 +100,7 @@ class PhOrJpScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min, // Make the dialog compact
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               'PH or JP',
@@ -88,18 +114,18 @@ class PhOrJpScreen extends StatelessWidget {
                   onTap: () => _setPreference('ph', context),
                   child: Image.asset(
                     'assets/images/philippines.png',
-                    width: 75, // Reduced size
-                    height: 75, // Reduced size
+                    width: 75,
+                    height: 75,
                     fit: BoxFit.contain,
                   ),
                 ),
-                SizedBox(width: 40), // Reduced space between flags
+                SizedBox(width: 40),
                 GestureDetector(
                   onTap: () => _setPreference('jp', context),
                   child: Image.asset(
                     'assets/images/japan.png',
-                    width: 75, // Reduced size
-                    height: 75, // Reduced size
+                    width: 75,
+                    height: 75,
                     fit: BoxFit.contain,
                   ),
                 ),

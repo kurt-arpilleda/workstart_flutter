@@ -19,7 +19,7 @@ class SoftwareWebViewScreenJP extends StatefulWidget {
 
 class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
   late final WebViewController _controller;
-  final ApiService apiService = ApiService();
+  final ApiServiceJP apiService = ApiServiceJP();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   String? _webUrl;
   final TextEditingController _idController = TextEditingController();
@@ -96,10 +96,10 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
         if (profileData["success"] == true) {
           String profilePictureFileName = profileData["picture"];
 
-          String primaryUrl = "${ApiService.apiUrls[0]}V4/11-A%20Employee%20List%20V2/profilepictures/$profilePictureFileName";
+          String primaryUrl = "${ApiServiceJP.apiUrls[0]}V4/11-A%20Employee%20List%20V2/profilepictures/$profilePictureFileName";
           bool isPrimaryUrlValid = await _isImageAvailable(primaryUrl);
 
-          String fallbackUrl = "${ApiService.apiUrls[1]}V4/11-A%20Employee%20List%20V2/profilepictures/$profilePictureFileName";
+          String fallbackUrl = "${ApiServiceJP.apiUrls[1]}V4/11-A%20Employee%20List%20V2/profilepictures/$profilePictureFileName";
           bool isFallbackUrlValid = await _isImageAvailable(fallbackUrl);
 
           setState(() {
