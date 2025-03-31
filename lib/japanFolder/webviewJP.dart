@@ -545,6 +545,13 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                                   width: 40,
                                   height: 40,
                                 ),
+                                // Subtle reload icon (only visible when PH is active and not loading)
+                                if (_phOrJp == "ph" && !_isCountryLoadingPh)
+                                  Opacity(
+                                    opacity: 0.6, // Make it subtle
+                                    child: Icon(Icons.refresh, size: 20, color: Colors.white),
+                                  ),
+                                // Loading indicator
                                 if (_isCountryLoadingPh)
                                   SizedBox(
                                     width: 20,
@@ -554,6 +561,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                                       strokeWidth: 2,
                                     ),
                                   ),
+                                // Underline
                                 if (_phOrJp == "ph")
                                   Positioned(
                                     bottom: 0,
@@ -584,6 +592,13 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                                   width: 40,
                                   height: 40,
                                 ),
+                                // Subtle reload icon (only visible when JP is active and not loading)
+                                if (_phOrJp == "jp" && !_isCountryLoadingJp)
+                                  Opacity(
+                                    opacity: 0.6, // Make it subtle
+                                    child: Icon(Icons.refresh, size: 20, color: Colors.white),
+                                  ),
+                                // Loading indicator
                                 if (_isCountryLoadingJp)
                                   SizedBox(
                                     width: 20,
@@ -593,6 +608,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> {
                                       strokeWidth: 2,
                                     ),
                                   ),
+                                // Underline
                                 if (_phOrJp == "jp")
                                   Positioned(
                                     bottom: 0,
