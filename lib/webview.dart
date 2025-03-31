@@ -253,13 +253,27 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text("Login Required"),
+          title: Row(
+            children: [
+              Image.asset(
+                country == 'ph' ?  'assets/images/philippines.png' :  'assets/images/japan.png',
+                width: 26,
+                height: 26,
+              ),
+              SizedBox(width: 8),
+              Text("Login Required",
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+                style: TextStyle(fontSize: 20),
+              ),
+            ],
+          ),
           content: Text(country == 'ph'
               ? "Please login to ARK LOG PH App first"
               : "Please login to ARK LOG JP App first"),
           actions: [
             TextButton(
-              child: Text("Back"),
+              child: Text("OK"),
               onPressed: () {
                 Navigator.of(context).pop();
                 _isCountryDialogShowing = false;

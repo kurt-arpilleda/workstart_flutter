@@ -88,12 +88,32 @@ class _PhOrJpScreenState extends State<PhOrJpScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title:  Text(country == 'ph'
-              ? "Login Required"
-              : "ログインが必要です"),
-          content: Text(country == 'ph'
-              ? "Please login to ARK LOG PH App first"
-              : "まず、ARK LOG JPアプリにログインしてください。"),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(
+                country == 'ph' ? 'assets/images/philippines.png' : 'assets/images/japan.png',
+                width: 26,
+                height: 26,
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  country == 'ph' ? "Login Required" : "ログインが必要です",
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                  style: TextStyle(fontSize: 20),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Text(
+              country == 'ph'
+                  ? "Please login to ARK LOG PH App first"
+                  : "まず、ARK LOG JPアプリにログインしてください。",
+            ),
+          ),
           actions: [
             TextButton(
               child: Text("OK"),
@@ -109,6 +129,7 @@ class _PhOrJpScreenState extends State<PhOrJpScreen> {
       _isDialogShowing = false;
     });
   }
+
 
   void _navigateWithTransition(BuildContext context, Widget screen) {
     Navigator.pushReplacement(
