@@ -33,6 +33,11 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> {
   int? _currentLanguageFlag;
   double _progress = 0;
   String? _phOrJp;
+  bool _isPhCountryPressed = false;
+  bool _isJpCountryPressed = false;
+  bool _isCountryDialogShowing = false;
+  bool _isCountryLoadingPh = false;
+  bool _isCountryLoadingJp = false;
 
   @override
   void initState() {
@@ -173,10 +178,27 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> {
   }
 
   Future<void> _updatePhOrJp(String value) async {
+    if ((value == 'ph' && _isCountryLoadingPh) || (value == 'jp' && _isCountryLoadingJp)) {
+      return;
+    }
+
+    setState(() {
+      if (value == 'ph') {
+        _isCountryLoadingPh = true;
+        _isPhCountryPressed = true;
+      } else {
+        _isCountryLoadingJp = true;
+        _isJpCountryPressed = true;
+      }
+    });
+
+    await Future.delayed(Duration(milliseconds: 100));
+
     try {
       String? deviceId = await UniqueIdentifier.serial;
       if (deviceId == null) {
-        throw Exception("Unable to get device ID");
+        _showCountryLoginDialog(context, value);
+        return;
       }
 
       // Get the appropriate service based on the selected country
@@ -186,26 +208,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> {
       final deviceResponse = await service.checkDeviceId(deviceId);
 
       if (deviceResponse['success'] != true || deviceResponse['idNumber'] == null) {
-        // Show dialog if not registered in the selected country's system
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text("Login Required"),
-              content: Text(value == "jp"
-                  ? "Please login to ARK LOG JP App first"
-                  : "Please login to ARK LOG PH App first"),
-              actions: <Widget>[
-                TextButton(
-                  child: Text("OK"),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                ),
-              ],
-            );
-          },
-        );
+        _showCountryLoginDialog(context, value);
         return;
       }
 
@@ -228,7 +231,46 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> {
         toastLength: Toast.LENGTH_LONG,
         gravity: ToastGravity.BOTTOM,
       );
+    } finally {
+      setState(() {
+        if (value == 'ph') {
+          _isCountryLoadingPh = false;
+          _isPhCountryPressed = false;
+        } else {
+          _isCountryLoadingJp = false;
+          _isJpCountryPressed = false;
+        }
+      });
     }
+  }
+
+  void _showCountryLoginDialog(BuildContext context, String country) {
+    if (_isCountryDialogShowing) return;
+
+    _isCountryDialogShowing = true;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Login Required"),
+          content: Text(country == 'ph'
+              ? "Please login to ARK LOG PH App first"
+              : "Please login to ARK LOG JP App first"),
+          actions: [
+            TextButton(
+              child: Text("Back"),
+              onPressed: () {
+                Navigator.of(context).pop();
+                _isCountryDialogShowing = false;
+              },
+            ),
+          ],
+        );
+      },
+    ).then((_) {
+      _isCountryDialogShowing = false;
+    });
   }
   Future<bool> _onWillPop() async {
     if (await _controller.canGoBack()) {
@@ -433,7 +475,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> {
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                Spacer(),
+                                SizedBox(width: 15), // Adjust this value as needed
                                 IconButton(
                                   icon: Icon(Icons.keyboard, size: 28),
                                   iconSize: 28,
@@ -461,40 +503,80 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> {
                         ),
                         SizedBox(width: 25),
                         GestureDetector(
+                          onTapDown: (_) => setState(() => _isPhCountryPressed = true),
+                          onTapUp: (_) => setState(() => _isPhCountryPressed = false),
+                          onTapCancel: () => setState(() => _isPhCountryPressed = false),
                           onTap: () => _updatePhOrJp("ph"),
-                          child: Column(
-                            children: [
-                              Image.asset(
-                                'assets/images/philippines.png',
-                                width: 40,
-                                height: 40,
-                              ),
-                              if (_phOrJp == "ph")
-                                Container(
-                                  height: 2,
+                          child: AnimatedContainer(
+                            duration: Duration(milliseconds: 100),
+                            transform: Matrix4.identity()..scale(_isPhCountryPressed ? 0.95 : 1.0),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Image.asset(
+                                  'assets/images/philippines.png',
                                   width: 40,
-                                  color: Colors.blue,
+                                  height: 40,
                                 ),
-                            ],
+                                if (_isCountryLoadingPh)
+                                  SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                if (_phOrJp == "ph")
+                                  Positioned(
+                                    bottom: 0,
+                                    child: Container(
+                                      height: 2,
+                                      width: 40,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                         SizedBox(width: 30),
                         GestureDetector(
+                          onTapDown: (_) => setState(() => _isJpCountryPressed = true),
+                          onTapUp: (_) => setState(() => _isJpCountryPressed = false),
+                          onTapCancel: () => setState(() => _isJpCountryPressed = false),
                           onTap: () => _updatePhOrJp("jp"),
-                          child: Column(
-                            children: [
-                              Image.asset(
-                                'assets/images/japan.png',
-                                width: 40,
-                                height: 40,
-                              ),
-                              if (_phOrJp == "jp")
-                                Container(
-                                  height: 2,
+                          child: AnimatedContainer(
+                            duration: Duration(milliseconds: 100),
+                            transform: Matrix4.identity()..scale(_isJpCountryPressed ? 0.95 : 1.0),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Image.asset(
+                                  'assets/images/japan.png',
                                   width: 40,
-                                  color: Colors.blue,
+                                  height: 40,
                                 ),
-                            ],
+                                if (_isCountryLoadingJp)
+                                  SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                if (_phOrJp == "jp")
+                                  Positioned(
+                                    bottom: 0,
+                                    child: Container(
+                                      height: 2,
+                                      width: 40,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ],

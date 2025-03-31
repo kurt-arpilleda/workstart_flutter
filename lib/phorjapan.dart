@@ -6,15 +6,42 @@ import 'japanFolder/webviewJP.dart';
 import 'api_service.dart';
 import 'japanFolder/api_serviceJP.dart';
 
-class PhOrJpScreen extends StatelessWidget {
+class PhOrJpScreen extends StatefulWidget {
+  @override
+  _PhOrJpScreenState createState() => _PhOrJpScreenState();
+}
+
+class _PhOrJpScreenState extends State<PhOrJpScreen> {
+  bool _isLoadingPh = false;
+  bool _isLoadingJp = false;
+  bool _isDialogShowing = false;
+  bool _isPhPressed = false;
+  bool _isJpPressed = false;
+
   Future<void> _setPreference(String value, BuildContext context) async {
+    if ((value == 'ph' && _isLoadingPh) || (value == 'jp' && _isLoadingJp)) {
+      return;
+    }
+
+    setState(() {
+      if (value == 'ph') {
+        _isLoadingPh = true;
+        _isPhPressed = true;
+      } else {
+        _isLoadingJp = true;
+        _isJpPressed = true;
+      }
+    });
+
+    await Future.delayed(Duration(milliseconds: 100)); // Short delay for button press effect
+
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('phorjp', value);
 
     try {
       String? deviceId = await UniqueIdentifier.serial;
       if (deviceId == null) {
-        _showLoginDialog(context);
+        _showLoginDialog(context, value);
         return;
       }
 
@@ -35,31 +62,50 @@ class PhOrJpScreen extends StatelessWidget {
           _navigateWithTransition(context, SoftwareWebViewScreenJP(linkID: 3));
         }
       } else {
-        _showLoginDialog(context);
+        _showLoginDialog(context, value);
       }
     } catch (e) {
-      _showLoginDialog(context);
+      _showLoginDialog(context, value);
+    } finally {
+      setState(() {
+        if (value == 'ph') {
+          _isLoadingPh = false;
+          _isPhPressed = false;
+        } else {
+          _isLoadingJp = false;
+          _isJpPressed = false;
+        }
+      });
     }
   }
 
-  void _showLoginDialog(BuildContext context) {
+  void _showLoginDialog(BuildContext context, String country) {
+    if (_isDialogShowing) return;
+
+    _isDialogShowing = true;
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text("Login Required"),
-          content: Text("Please login to ARK LOG App first"),
+          content: Text(country == 'ph'
+              ? "Please login to ARK LOG PH App first"
+              : "Please login to ARK LOG JP App first"),
           actions: [
             TextButton(
               child: Text("Back"),
               onPressed: () {
                 Navigator.of(context).pop();
+                _isDialogShowing = false;
               },
             ),
           ],
         );
       },
-    );
+    ).then((_) {
+      _isDialogShowing = false;
+    });
   }
 
   void _navigateWithTransition(BuildContext context, Widget screen) {
@@ -110,23 +156,59 @@ class PhOrJpScreen extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // PH Flag with button-like animation
                 GestureDetector(
+                  onTapDown: (_) => setState(() => _isPhPressed = true),
+                  onTapUp: (_) => setState(() => _isPhPressed = false),
+                  onTapCancel: () => setState(() => _isPhPressed = false),
                   onTap: () => _setPreference('ph', context),
-                  child: Image.asset(
-                    'assets/images/philippines.png',
-                    width: 75,
-                    height: 75,
-                    fit: BoxFit.contain,
+                  child: AnimatedContainer(
+                    duration: Duration(milliseconds: 100),
+                    transform: Matrix4.identity()..scale(_isPhPressed ? 0.95 : 1.0),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Image.asset(
+                          'assets/images/philippines.png',
+                          width: 75,
+                          height: 75,
+                          fit: BoxFit.contain,
+                        ),
+                        if (_isLoadingPh)
+                          CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                            strokeWidth: 2,
+                          ),
+                      ],
+                    ),
                   ),
                 ),
                 SizedBox(width: 40),
+                // JP Flag with button-like animation
                 GestureDetector(
+                  onTapDown: (_) => setState(() => _isJpPressed = true),
+                  onTapUp: (_) => setState(() => _isJpPressed = false),
+                  onTapCancel: () => setState(() => _isJpPressed = false),
                   onTap: () => _setPreference('jp', context),
-                  child: Image.asset(
-                    'assets/images/japan.png',
-                    width: 75,
-                    height: 75,
-                    fit: BoxFit.contain,
+                  child: AnimatedContainer(
+                    duration: Duration(milliseconds: 100),
+                    transform: Matrix4.identity()..scale(_isJpPressed ? 0.95 : 1.0),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Image.asset(
+                          'assets/images/japan.png',
+                          width: 75,
+                          height: 75,
+                          fit: BoxFit.contain,
+                        ),
+                        if (_isLoadingJp)
+                          CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                            strokeWidth: 2,
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ],
