@@ -353,8 +353,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> {
                     ),
                   ],
                 ),
-              )
-                  : null,
+              ) : null,
               actions: [
                 Padding(
                   padding: const EdgeInsets.only(right: 10.0),
