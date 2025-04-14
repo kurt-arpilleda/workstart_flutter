@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:unique_identifier/unique_identifier.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 class ApiServiceJP {
   static const List<String> apiUrls = [
     "http://192.168.1.213/",
@@ -19,6 +21,27 @@ class ApiServiceJP {
       toastLength: Toast.LENGTH_LONG,
       gravity: ToastGravity.BOTTOM,
     );
+  }
+
+  Future<http.Response> _makeRequest(Uri uri, {Map<String, String>? headers, int retries = maxRetries}) async {
+    for (int attempt = 1; attempt <= retries; attempt++) {
+      for (String apiUrl in apiUrls) {
+        try {
+          final fullUri = Uri.parse(apiUrl).resolve(uri.toString());
+          final response = await http.get(fullUri, headers: headers).timeout(requestTimeout);
+          return response;
+        } catch (e) {
+          // print("Error accessing $apiUrl on attempt $attempt: $e");
+        }
+      }
+      // If all servers fail, wait for an exponential backoff delay before retrying
+      if (attempt < retries) {
+        final delay = initialRetryDelay * (1 << (attempt - 1)); // Exponential backoff
+        // print("Waiting for ${delay.inSeconds} seconds before retrying...");
+        await Future.delayed(delay);
+      }
+    }
+    throw Exception("All API URLs are unreachable after $retries attempts");
   }
 
   Future<String> fetchSoftwareLink(int linkID) async {
@@ -180,7 +203,13 @@ class ApiServiceJP {
           final response = await http.get(uri).timeout(requestTimeout);
 
           if (response.statusCode == 200) {
-            return jsonDecode(response.body);
+            final data = jsonDecode(response.body);
+            // Store the idNumber if it exists
+            if (data['success'] == true && data['idNumber'] != null) {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('IDNumberJP', data['idNumber']);
+            }
+            return data;
           }
         } catch (e) {
           print("Error accessing $apiUrl on attempt $attempt: $e");

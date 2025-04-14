@@ -105,16 +105,57 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     setState(() {
       _isLoading = true;
     });
+    // First check if IDNumber in SharedPreferences matches the one from the server
+    bool shouldRefetchUrl = await _shouldRefetchUrl();
 
     // Refresh all necessary data
     await _loadPhOrJp();
     await _loadCurrentLanguageFlag();
     await _fetchDeviceInfo();
-    await _fetchAndLoadUrl();
+
+    // If IDNumbers don't match, fetch a new URL
+    if (shouldRefetchUrl) {
+      await _fetchAndLoadUrl();
+    } else {
+      // Otherwise just reload the current URL
+      String? currentUrl = await _controller.currentUrl();
+      if (currentUrl != null) {
+        _controller.loadRequest(Uri.parse(currentUrl));
+      } else if (_webUrl != null) {
+        // Fallback to the stored URL if currentUrl is null
+        _controller.loadRequest(Uri.parse(_webUrl!));
+      }
+    }
 
     setState(() {
       _isLoading = false;
     });
+  }
+
+  Future<bool> _shouldRefetchUrl() async {
+    try {
+      // Get the stored IDNumber from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      String? storedIdNumber = prefs.getString('IDNumberJP');
+      // Get the latest IDNumber from the server
+      String? deviceId = await UniqueIdentifier.serial;
+      if (deviceId == null) {
+        return true; // If we can't get device ID, refetch to be safe
+      }
+      final deviceResponse = await apiServiceJP.checkDeviceId(deviceId);
+      String? serverIdNumber = deviceResponse['success'] == true ? deviceResponse['idNumber'] : null;
+
+      // If either IDNumber is null or they don't match, we should refetch the URL
+      if (storedIdNumber == null || serverIdNumber == null || storedIdNumber != serverIdNumber) {
+        debugPrint("IDNumber changed: $storedIdNumber -> $serverIdNumber. Refetching URL.");
+        return true;
+      }
+
+      return false; // IDNumbers match, no need to refetch URL
+    } catch (e) {
+      debugPrint("Error checking IDNumber: $e");
+      return true; // On error, refetch to be safe
+    }
   }
   Future<void> _fetchDeviceInfo() async {
     try {
@@ -125,6 +166,10 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
 
       final deviceResponse = await apiServiceJP.checkDeviceId(deviceId);
       if (deviceResponse['success'] == true && deviceResponse['idNumber'] != null) {
+        // Store the IDNumber in SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('IDNumberJP', deviceResponse['idNumber']);
+
         setState(() {
           _idNumber = deviceResponse['idNumber'];
         });
@@ -135,6 +180,23 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     }
   }
 
+  Future<void> _fetchAndLoadUrl() async {
+    try {
+      String url = await apiServiceJP.fetchSoftwareLink(widget.linkID);
+      if (mounted) {
+        setState(() {
+          _webUrl = url;
+        });
+        _controller.loadRequest(Uri.parse(url));
+      }
+    } catch (e) {
+      debugPrint("Error fetching link: $e");
+      // If fetching fails, try to load the last known URL
+      if (_webUrl != null) {
+        _controller.loadRequest(Uri.parse(_webUrl!));
+      }
+    }
+  }
   Future<void> _loadPhOrJp() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -172,20 +234,6 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       return response.statusCode == 200;
     } catch (e) {
       return false;
-    }
-  }
-
-  Future<void> _fetchAndLoadUrl() async {
-    try {
-      String url = await apiServiceJP.fetchSoftwareLink(widget.linkID);
-      if (mounted) {
-        setState(() {
-          _webUrl = url;
-        });
-        _controller.loadRequest(Uri.parse(url));
-      }
-    } catch (e) {
-      debugPrint("Error fetching link: $e");
     }
   }
 
@@ -363,7 +411,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
           preferredSize: Size.fromHeight(kToolbarHeight - 20),
           child: SafeArea(
             child: AppBar(
-              backgroundColor: Color(0xFF3452B4),
+              backgroundColor: Color(0xFF2053B3),
               centerTitle: true,
               toolbarHeight: kToolbarHeight - 20,
               leading: IconButton(

@@ -107,15 +107,59 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
       _isLoading = true;
     });
 
+    // First check if IDNumber in SharedPreferences matches the one from the server
+    bool shouldRefetchUrl = await _shouldRefetchUrl();
+
     // Refresh all necessary data
     await _loadPhOrJp();
     await _loadCurrentLanguageFlag();
     await _fetchDeviceInfo();
-    await _fetchAndLoadUrl();
+
+    // If IDNumbers don't match, fetch a new URL
+    if (shouldRefetchUrl) {
+      await _fetchAndLoadUrl();
+    } else {
+      // Otherwise just reload the current URL
+      String? currentUrl = await _controller.currentUrl();
+      if (currentUrl != null) {
+        _controller.loadRequest(Uri.parse(currentUrl));
+      } else if (_webUrl != null) {
+        // Fallback to the stored URL if currentUrl is null
+        _controller.loadRequest(Uri.parse(_webUrl!));
+      }
+    }
 
     setState(() {
       _isLoading = false;
     });
+  }
+
+  Future<bool> _shouldRefetchUrl() async {
+    try {
+      // Get the stored IDNumber from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      String? storedIdNumber = prefs.getString('IDNumber');
+
+      // Get the latest IDNumber from the server
+      String? deviceId = await UniqueIdentifier.serial;
+      if (deviceId == null) {
+        return true; // If we can't get device ID, refetch to be safe
+      }
+
+      final deviceResponse = await apiService.checkDeviceId(deviceId);
+      String? serverIdNumber = deviceResponse['success'] == true ? deviceResponse['idNumber'] : null;
+
+      // If either IDNumber is null or they don't match, we should refetch the URL
+      if (storedIdNumber == null || serverIdNumber == null || storedIdNumber != serverIdNumber) {
+        debugPrint("IDNumber changed: $storedIdNumber -> $serverIdNumber. Refetching URL.");
+        return true;
+      }
+
+      return false; // IDNumbers match, no need to refetch URL
+    } catch (e) {
+      debugPrint("Error checking IDNumber: $e");
+      return true; // On error, refetch to be safe
+    }
   }
   Future<void> _fetchDeviceInfo() async {
     try {
@@ -126,6 +170,10 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
 
       final deviceResponse = await apiService.checkDeviceId(deviceId);
       if (deviceResponse['success'] == true && deviceResponse['idNumber'] != null) {
+        // Store the IDNumber in SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('IDNumber', deviceResponse['idNumber']);
+
         setState(() {
           _idNumber = deviceResponse['idNumber'];
         });
@@ -133,6 +181,23 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
       }
     } catch (e) {
       print("Error fetching device info: $e");
+    }
+  }
+  Future<void> _fetchAndLoadUrl() async {
+    try {
+      String url = await apiService.fetchSoftwareLink(widget.linkID);
+      if (mounted) {
+        setState(() {
+          _webUrl = url;
+        });
+        _controller.loadRequest(Uri.parse(url));
+      }
+    } catch (e) {
+      debugPrint("Error fetching link: $e");
+      // If fetching fails, try to load the last known URL
+      if (_webUrl != null) {
+        _controller.loadRequest(Uri.parse(_webUrl!));
+      }
     }
   }
 
@@ -176,19 +241,6 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
     }
   }
 
-  Future<void> _fetchAndLoadUrl() async {
-    try {
-      String url = await apiService.fetchSoftwareLink(widget.linkID);
-      if (mounted) {
-        setState(() {
-          _webUrl = url;
-        });
-        _controller.loadRequest(Uri.parse(url));
-      }
-    } catch (e) {
-      debugPrint("Error fetching link: $e");
-    }
-  }
 
   Future<void> _loadCurrentLanguageFlag() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -364,7 +416,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
           preferredSize: Size.fromHeight(kToolbarHeight - 20),
           child: SafeArea(
             child: AppBar(
-              backgroundColor: Color(0xFF3452B4),
+              backgroundColor: Color(0xFF2053B3),
               centerTitle: true,
               toolbarHeight: kToolbarHeight - 20,
               leading: IconButton(
