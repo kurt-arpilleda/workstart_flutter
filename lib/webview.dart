@@ -118,16 +118,18 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
     // If IDNumbers don't match, fetch a new URL
     if (shouldRefetchUrl) {
       await _fetchAndLoadUrl();
-    } else {
-      // Otherwise just reload the current URL
-      String? currentUrl = await _controller.currentUrl();
-      if (currentUrl != null) {
-        _controller.loadRequest(Uri.parse(currentUrl));
-      } else if (_webUrl != null) {
-        // Fallback to the stored URL if currentUrl is null
-        _controller.loadRequest(Uri.parse(_webUrl!));
-      }
     }
+
+    // else {
+    //   // Otherwise just reload the current URL
+    //   String? currentUrl = await _controller.currentUrl();
+    //   if (currentUrl != null) {
+    //     _controller.loadRequest(Uri.parse(currentUrl));
+    //   } else if (_webUrl != null) {
+    //     // Fallback to the stored URL if currentUrl is null
+    //     _controller.loadRequest(Uri.parse(_webUrl!));
+    //   }
+    // }
 
     setState(() {
       _isLoading = false;
