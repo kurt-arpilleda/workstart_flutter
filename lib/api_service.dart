@@ -1,19 +1,33 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:unique_identifier/unique_identifier.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 class ApiService {
   static const List<String> apiUrls = [
-    "http://192.168.254.163/",
-    "http://126.209.7.246/"
+    "https://192.168.254.163/",
+    "https://126.209.7.246/"
   ];
 
   static const Duration requestTimeout = Duration(seconds: 2);
   static const int maxRetries = 6;
   static const Duration initialRetryDelay = Duration(seconds: 1);
 
+  late http.Client httpClient;
+
+  ApiService() {
+    httpClient = _createHttpClient();
+  }
+
+  http.Client _createHttpClient() {
+    final HttpClient client = HttpClient()
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+    return IOClient(client);
+  }
   void _showToast(String message) {
     Fluttertoast.showToast(
       msg: message,
@@ -21,7 +35,6 @@ class ApiService {
       gravity: ToastGravity.BOTTOM,
     );
   }
-
   Future<String> fetchSoftwareLink(int linkID) async {
     String? deviceId = await UniqueIdentifier.serial;
     if (deviceId == null) {
@@ -200,5 +213,14 @@ class ApiService {
     }
     throw Exception("Both API URLs are unreachable after $maxRetries attempts");
   }
-
+  static void setupHttpOverrides() {
+    HttpOverrides.global = MyHttpOverrides();
+  }
+}
+class MyHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+  }
 }

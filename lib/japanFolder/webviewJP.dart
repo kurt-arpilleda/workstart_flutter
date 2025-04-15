@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../api_service.dart';
-import 'api_serviceJP.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import '../auto_update.dart';
+import 'api_serviceJP.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:mime/mime.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:unique_identifier/unique_identifier.dart';
 
@@ -20,10 +23,13 @@ class SoftwareWebViewScreenJP extends StatefulWidget {
 }
 
 class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with WidgetsBindingObserver {
-  late final WebViewController _controller;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final ApiService apiService = ApiService();
   final ApiServiceJP apiServiceJP = ApiServiceJP();
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  InAppWebViewController? webViewController;
+  PullToRefreshController? pullToRefreshController;
+
   String? _webUrl;
   String? _profilePictureUrl;
   String? _firstName;
@@ -44,18 +50,16 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _initializeWebViewController();
-    _fetchAndLoadUrl();
-    _loadCurrentLanguageFlag();
-    _loadPhOrJp();
-    _fetchDeviceInfo();
-
+    _initializePullToRefresh();
+    _fetchInitialData();
     _checkForUpdates();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    webViewController?.stopLoading();
+    pullToRefreshController?.dispose();
     super.dispose();
   }
 
@@ -67,31 +71,19 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     }
   }
 
-  void _initializeWebViewController() {
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (String url) {
-            setState(() {
-              _isLoading = true;
-              _progress = 0;
-            });
-          },
-          onProgress: (int progress) {
-            setState(() {
-              _progress = progress / 100;
-            });
-          },
-          onPageFinished: (String url) {
-            setState(() {
-              _isLoading = false;
-              _progress = 1;
-            });
-          },
-        ),
-      );
+  void _initializePullToRefresh() {
+    pullToRefreshController = PullToRefreshController(
+      settings: PullToRefreshSettings(
+        color: Colors.blue,
+      ),
+      onRefresh: () async {
+        if (webViewController != null) {
+          _fetchAndLoadUrl();
+        }
+      },
+    );
   }
+
   Future<void> _checkForUpdates() async {
     try {
       await AutoUpdate.checkForUpdate(context);
@@ -100,36 +92,12 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       debugPrint('Update check failed: $e');
     }
   }
-  Future<void> _refreshAllData() async {
-    // Reset loading state
-    setState(() {
-      _isLoading = true;
-    });
-    // First check if IDNumber in SharedPreferences matches the one from the server
-    bool shouldRefetchUrl = await _shouldRefetchUrl();
 
-    // Refresh all necessary data
-    await _loadPhOrJp();
-    await _loadCurrentLanguageFlag();
+  Future<void> _fetchInitialData() async {
+    await _fetchAndLoadUrl();
     await _fetchDeviceInfo();
-
-    // If IDNumbers don't match, fetch a new URL
-    if (shouldRefetchUrl) {
-      await _fetchAndLoadUrl();
-    } else {
-      // Otherwise just reload the current URL
-      String? currentUrl = await _controller.currentUrl();
-      if (currentUrl != null) {
-        _controller.loadRequest(Uri.parse(currentUrl));
-      } else if (_webUrl != null) {
-        // Fallback to the stored URL if currentUrl is null
-        _controller.loadRequest(Uri.parse(_webUrl!));
-      }
-    }
-
-    setState(() {
-      _isLoading = false;
-    });
+    await _loadCurrentLanguageFlag();
+    await _loadPhOrJp();
   }
 
   Future<bool> _shouldRefetchUrl() async {
@@ -137,11 +105,13 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       // Get the stored IDNumber from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       String? storedIdNumber = prefs.getString('IDNumberJP');
+
       // Get the latest IDNumber from the server
       String? deviceId = await UniqueIdentifier.serial;
       if (deviceId == null) {
         return true; // If we can't get device ID, refetch to be safe
       }
+
       final deviceResponse = await apiServiceJP.checkDeviceId(deviceId);
       String? serverIdNumber = deviceResponse['success'] == true ? deviceResponse['idNumber'] : null;
 
@@ -157,6 +127,41 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       return true; // On error, refetch to be safe
     }
   }
+
+  Future<void> _refreshAllData() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      // First check if IDNumber in SharedPreferences matches the one from the server
+      bool shouldRefetchUrl = await _shouldRefetchUrl();
+
+      // Always refresh basic data
+      await _loadPhOrJp();
+      await _loadCurrentLanguageFlag();
+      await _fetchDeviceInfo();
+
+      // If IDNumbers don't match, refetch the URL
+      if (shouldRefetchUrl) {
+        await _fetchAndLoadUrl();
+      } else if (webViewController != null) {
+        // If IDNumbers match, just reload the current page
+        WebUri? currentUri = await webViewController!.getUrl();
+        if (currentUri != null) {
+          await webViewController!.loadUrl(urlRequest: URLRequest(url: currentUri));
+        } else {
+          _fetchAndLoadUrl();
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   Future<void> _fetchDeviceInfo() async {
     try {
       String? deviceId = await UniqueIdentifier.serial;
@@ -166,7 +171,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
 
       final deviceResponse = await apiServiceJP.checkDeviceId(deviceId);
       if (deviceResponse['success'] == true && deviceResponse['idNumber'] != null) {
-        // Store the IDNumber in SharedPreferences
+        // Store the IDNumber in SharedPreferences (in case it's not already saved by the API)
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('IDNumberJP', deviceResponse['idNumber']);
 
@@ -180,23 +185,6 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     }
   }
 
-  Future<void> _fetchAndLoadUrl() async {
-    try {
-      String url = await apiServiceJP.fetchSoftwareLink(widget.linkID);
-      if (mounted) {
-        setState(() {
-          _webUrl = url;
-        });
-        _controller.loadRequest(Uri.parse(url));
-      }
-    } catch (e) {
-      debugPrint("Error fetching link: $e");
-      // If fetching fails, try to load the last known URL
-      if (_webUrl != null) {
-        _controller.loadRequest(Uri.parse(_webUrl!));
-      }
-    }
-  }
   Future<void> _loadPhOrJp() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -237,6 +225,23 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     }
   }
 
+  Future<void> _fetchAndLoadUrl() async {
+    try {
+      String url = await apiServiceJP.fetchSoftwareLink(widget.linkID);
+      if (mounted) {
+        setState(() {
+          _webUrl = url;
+          _isLoading = true;
+        });
+        if (webViewController != null) {
+          await webViewController!.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching link: $e");
+    }
+  }
+
   Future<void> _loadCurrentLanguageFlag() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -245,20 +250,23 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
   }
 
   Future<void> _updateLanguageFlag(int flag) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+
     if (_idNumber != null) {
       setState(() {
         _currentLanguageFlag = flag;
       });
       try {
         await apiServiceJP.updateLanguageFlag(_idNumber!, flag);
-        SharedPreferences prefs = await SharedPreferences.getInstance();
         await prefs.setInt('languageFlag', flag);
 
-        String? currentUrl = await _controller.currentUrl();
-        if (currentUrl != null) {
-          _controller.loadRequest(Uri.parse(currentUrl));
-        } else {
-          _controller.reload();
+        if (webViewController != null) {
+          WebUri? currentUri = await webViewController!.getUrl();
+          if (currentUri != null) {
+            await webViewController!.loadUrl(urlRequest: URLRequest(url: currentUri));
+          } else {
+            _fetchAndLoadUrl();
+          }
         }
       } catch (e) {
         print("Error updating language flag: $e");
@@ -332,7 +340,6 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       });
     }
   }
-
   void _showCountryLoginDialog(BuildContext context, String country) {
     if (_isCountryDialogShowing) return;
 
@@ -350,7 +357,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                 height: 26,
               ),
               SizedBox(width: 8),
-              Text("ログインが必要です",
+              Text("Login Required",
                 overflow: TextOverflow.ellipsis,
                 softWrap: false,
                 style: TextStyle(fontSize: 20),
@@ -358,8 +365,8 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
             ],
           ),
           content: Text(country == 'ph'
-              ? "まず、ARK LOG PHアプリにログインしてください。"
-              : "まず、ARK LOG JPアプリにログインしてください。"),
+              ? "Please login to ARK LOG PH App first"
+              : "Please login to ARK LOG JP App first"),
           actions: [
             TextButton(
               child: Text("OK"),
@@ -375,12 +382,50 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       _isCountryDialogShowing = false;
     });
   }
+
   Future<bool> _onWillPop() async {
-    if (await _controller.canGoBack()) {
-      _controller.goBack();
+    if (webViewController != null && await webViewController!.canGoBack()) {
+      webViewController!.goBack();
       return false;
     } else {
       return true;
+    }
+  }
+
+  // Function to check if a URL is a download link
+  bool _isDownloadableUrl(String url) {
+    final mimeType = lookupMimeType(url);
+    if (mimeType == null) return false;
+
+    // List of common download file extensions
+    const downloadableExtensions = [
+      'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+      'zip', 'rar', '7z', 'tar', 'gz',
+      'apk', 'exe', 'dmg', 'pkg',
+      'jpg', 'jpeg', 'png', 'gif', 'bmp',
+      'mp3', 'wav', 'ogg',
+      'mp4', 'avi', 'mov', 'mkv',
+      'txt', 'csv', 'json', 'xml'
+    ];
+
+    return downloadableExtensions.any((ext) => url.toLowerCase().contains('.$ext'));
+  }
+
+  // Function to launch URL in external browser
+  Future<void> _launchInBrowser(String url) async {
+    if (await canLaunchUrl(Uri.parse(url))) {
+      await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+    } else {
+      Fluttertoast.showToast(
+        msg: "Could not launch browser",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+      );
     }
   }
   Future<void> _showInputMethodPicker() async {
@@ -389,8 +434,9 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
         const MethodChannel channel = MethodChannel('input_method_channel');
         await channel.invokeMethod('showInputMethodPicker');
       } else {
+        // iOS doesn't have this capability
         Fluttertoast.showToast(
-          msg: "Keyboard selection is only available on Android",
+          msg: "キーボードの選択はAndroidでのみ利用可能です。",
           toastLength: Toast.LENGTH_SHORT,
           gravity: ToastGravity.BOTTOM,
         );
@@ -399,7 +445,6 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       debugPrint("Error showing input method picker: $e");
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -411,7 +456,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
           preferredSize: Size.fromHeight(kToolbarHeight - 20),
           child: SafeArea(
             child: AppBar(
-              backgroundColor: Color(0xFF2053B3),
+              backgroundColor: Color(0xFF3452B4),
               centerTitle: true,
               toolbarHeight: kToolbarHeight - 20,
               leading: IconButton(
@@ -735,7 +780,95 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
           child: Stack(
             children: [
               if (_webUrl != null)
-                WebViewWidget(controller: _controller),
+                InAppWebView(
+                  initialUrlRequest: URLRequest(url: WebUri(_webUrl!)),
+                  initialSettings: InAppWebViewSettings(
+                    mediaPlaybackRequiresUserGesture: false,
+                    javaScriptEnabled: true,
+                    useHybridComposition: true,
+                    allowsInlineMediaPlayback: true,
+                    allowContentAccess: true,
+                    allowFileAccess: true,
+                    cacheEnabled: true,
+                    javaScriptCanOpenWindowsAutomatically: true,
+                    allowUniversalAccessFromFileURLs: true,
+                    allowFileAccessFromFileURLs: true,
+                    useOnDownloadStart: true,
+                    transparentBackground: true,
+                    thirdPartyCookiesEnabled: true,
+                    domStorageEnabled: true,
+                    databaseEnabled: true,
+                    hardwareAcceleration: true,
+                    supportMultipleWindows: false,
+                    useWideViewPort: true,
+                    loadWithOverviewMode: true,
+                    mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+                    verticalScrollBarEnabled: false,
+                    horizontalScrollBarEnabled: false,
+                    overScrollMode: OverScrollMode.NEVER,
+                    forceDark: ForceDark.OFF,
+                    forceDarkStrategy: ForceDarkStrategy.WEB_THEME_DARKENING_ONLY,
+                    saveFormData: true,
+                    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+                  ),
+                  pullToRefreshController: pullToRefreshController,
+                  onWebViewCreated: (controller) {
+                    webViewController = controller;
+                  },
+                  onLoadStart: (controller, url) {
+                    setState(() {
+                      _isLoading = true;
+                      _progress = 0;
+                    });
+                  },
+                  onLoadStop: (controller, url) {
+                    pullToRefreshController?.endRefreshing();
+                    setState(() {
+                      _isLoading = false;
+                      _progress = 1;
+                    });
+                  },
+                  onProgressChanged: (controller, progress) {
+                    setState(() {
+                      _progress = progress / 100;
+                    });
+                  },
+                  onReceivedServerTrustAuthRequest: (controller, challenge) async {
+                    return ServerTrustAuthResponse(action: ServerTrustAuthResponseAction.PROCEED);
+                  },
+                  onPermissionRequest: (controller, request) async {
+                    List<Permission> permissionsToRequest = [];
+
+                    if (request.resources.contains(PermissionResourceType.CAMERA)) {
+                      permissionsToRequest.add(Permission.camera);
+                    }
+                    if (request.resources.contains(PermissionResourceType.MICROPHONE)) {
+                      permissionsToRequest.add(Permission.microphone);
+                    }
+
+                    Map<Permission, PermissionStatus> statuses = await permissionsToRequest.request();
+                    bool allGranted = statuses.values.every((status) => status.isGranted);
+
+                    return PermissionResponse(
+                      resources: request.resources,
+                      action: allGranted ? PermissionResponseAction.GRANT : PermissionResponseAction.DENY,
+                    );
+                  },
+                  // Handle download links by opening in external browser
+                  shouldOverrideUrlLoading: (controller, navigationAction) async {
+                    final url = navigationAction.request.url?.toString() ?? '';
+
+                    if (_isDownloadableUrl(url)) {
+                      await _launchInBrowser(url);
+                      return NavigationActionPolicy.CANCEL;
+                    }
+                    return NavigationActionPolicy.ALLOW;
+                  },
+                  // Also handle explicit download requests
+                  onDownloadStartRequest: (controller, downloadStartRequest) async {
+                    await _launchInBrowser(downloadStartRequest.url.toString());
+                  },
+                ),
               if (_isLoading)
                 LinearProgressIndicator(
                   value: _progress,
