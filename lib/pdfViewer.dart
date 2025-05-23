@@ -116,12 +116,14 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          widget.languageFlag == 2 ? '手引き' : 'Manual', // 2 is Japanese flag
+          widget.fileName.toLowerCase().contains('manual')
+              ? (widget.languageFlag == 2 ? '手引き' : 'Manual')
+              : widget.fileName,
           style: const TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              overflow: TextOverflow.ellipsis,
-              fontWeight: FontWeight.bold
+            color: Colors.white,
+            fontSize: 24,
+            overflow: TextOverflow.ellipsis,
+            fontWeight: FontWeight.bold,
           ),
         ),
         centerTitle: true,
