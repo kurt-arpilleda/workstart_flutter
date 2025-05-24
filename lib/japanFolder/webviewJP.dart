@@ -396,6 +396,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
             pdfUrl: url,
             fileName: fileName,
             languageFlag: _currentLanguageFlag ?? 1,
+            shouldDeleteOnClose: true,
           ),
         ),
       );
