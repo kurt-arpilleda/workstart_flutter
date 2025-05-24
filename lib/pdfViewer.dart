@@ -186,7 +186,9 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> with WidgetsBindingOb
           children: [
             if (downloadProgress > 0) ...[
               Text(
-                remoteLastModified != null ? 'Updating document...' : 'Downloading...',
+                remoteLastModified != null
+                    ? (widget.languageFlag == 2 ? 'ドキュメントを更新中...' : 'Updating document...')
+                    : (widget.languageFlag == 2 ? 'ダウンロード中...' : 'Downloading...'),
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
