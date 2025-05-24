@@ -22,18 +22,34 @@ class PDFViewerScreen extends StatefulWidget {
   State<PDFViewerScreen> createState() => _PDFViewerScreenState();
 }
 
-class _PDFViewerScreenState extends State<PDFViewerScreen> {
+class _PDFViewerScreenState extends State<PDFViewerScreen> with WidgetsBindingObserver {
   String? localPath;
   bool isLoading = true;
   bool isError = false;
   String errorMessage = '';
   double downloadProgress = 0.0;
   DateTime? remoteLastModified;
+  bool _isExiting = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     loadPdf();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _deletePdfOnExit();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      _deletePdfOnExit();
+    }
   }
 
   Future<void> loadPdf() async {
@@ -60,10 +76,6 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
 
       if (shouldDownload) {
         final request = await http.Client().send(http.Request('GET', Uri.parse(widget.pdfUrl)));
-
-        if (request.statusCode != 200) {
-          throw Exception('Failed to download PDF: ${request.statusCode}');
-        }
 
         final contentLength = request.contentLength ?? 0;
         final List<int> bytes = [];
@@ -98,23 +110,26 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
     }
   }
 
-  Future<void> _deletePdfFile() async {
-    if (widget.shouldDeleteOnClose && localPath != null) {
-      try {
-        final file = File(localPath!);
-        if (await file.exists()) {
-          await file.delete();
-          debugPrint('PDF file deleted successfully');
-        }
-      } catch (e) {
-        debugPrint('Error deleting PDF file: $e');
+  Future<void> _deletePdfOnExit() async {
+    if (_isExiting || !widget.shouldDeleteOnClose || localPath == null) return;
+
+    _isExiting = true;
+    try {
+      final file = File(localPath!);
+      if (await file.exists()) {
+        await file.delete();
+        debugPrint('PDF deleted on exit');
       }
+    } catch (e) {
+      debugPrint('Error deleting PDF on exit: $e');
+    } finally {
+      _isExiting = false;
     }
   }
 
   Future<bool> _onWillPop() async {
-    await _deletePdfFile();
-    return true; // Allow back navigation
+    await _deletePdfOnExit();
+    return true; // Allow navigation
   }
 
   @override
@@ -127,7 +142,7 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
           leading: IconButton(
             icon: const Icon(Icons.close, color: Colors.white),
             onPressed: () async {
-              await _deletePdfFile();
+              await _deletePdfOnExit();
               if (mounted) Navigator.of(context).pop();
             },
           ),
@@ -155,12 +170,8 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
           autoSpacing: true,
           pageFling: false,
           pageSnap: false,
-          onError: (error) {
-            debugPrint(error.toString());
-          },
-          onPageError: (page, error) {
-            debugPrint('$page: ${error.toString()}');
-          },
+          onError: (error) => debugPrint(error.toString()),
+          onPageError: (page, error) => debugPrint('$page: ${error.toString()}'),
         ),
       ),
     );
@@ -220,12 +231,5 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    // Handle case where screen is disposed without explicit navigation
-    _deletePdfFile();
-    super.dispose();
   }
 }
