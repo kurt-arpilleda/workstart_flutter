@@ -453,70 +453,61 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
   Future<void> _injectBarcodeIntoWebView(String barcode) async {
     if (webViewController != null) {
       try {
-        // JavaScript to find the focused input and set its value, then trigger enter
         String jsCode = '''
-        (function() {
-          var activeElement = document.activeElement;
-          if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
-            // Set the value
-            activeElement.value = '$barcode';
-            
-            // Trigger input event
-            activeElement.dispatchEvent(new Event('input', { bubbles: true }));
-            
-            // Trigger change event
-            activeElement.dispatchEvent(new Event('change', { bubbles: true }));
-            
-            // Simulate Enter key press
-            var enterEvent = new KeyboardEvent('keydown', {
-              key: 'Enter',
-              code: 'Enter',
-              keyCode: 13,
-              which: 13,
-              bubbles: true
-            });
-            activeElement.dispatchEvent(enterEvent);
-            
-            var enterEventUp = new KeyboardEvent('keyup', {
-              key: 'Enter',
-              code: 'Enter',
-              keyCode: 13,
-              which: 13,
-              bubbles: true
-            });
-            activeElement.dispatchEvent(enterEventUp);
-            
-            return 'success';
-          } else {
-            // If no input is focused, try to find the first input field
-            var inputs = document.querySelectorAll('input[type="text"], input[type="search"], input[type="email"], input[type="number"], textarea');
-            if (inputs.length > 0) {
-              var firstInput = inputs[0];
-              firstInput.focus();
-              firstInput.value = '$barcode';
-              firstInput.dispatchEvent(new Event('input', { bubbles: true }));
-              firstInput.dispatchEvent(new Event('change', { bubbles: true }));
-              
-              var enterEvent = new KeyboardEvent('keydown', {
-                key: 'Enter',
-                code: 'Enter',
-                keyCode: 13,
-                which: 13,
-                bubbles: true
-              });
-              firstInput.dispatchEvent(enterEvent);
-              
-              return 'success_first_input';
-            }
-            return 'no_input_found';
-          }
-        })();
+      async function injectBarcode() {
+        const activeElement = document.activeElement;
+        const inputs = document.querySelectorAll('input[type="text"], input[type="search"], input[type="number"], textarea');
+        const targetInput = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') 
+          ? activeElement 
+          : inputs.length > 0 ? inputs[0] : null;
+
+        if (!targetInput) return 'no_input_found';
+
+        // Focus and set value
+        targetInput.focus();
+        targetInput.value = '$barcode';
+
+        // Trigger input event
+        targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Trigger change event
+        targetInput.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Create and dispatch Enter key sequence with delays
+        const enterEvent = (type) => new KeyboardEvent(type, {
+          key: 'Enter',
+          code: 'Enter',
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+          cancelable: true
+        });
+
+        targetInput.dispatchEvent(enterEvent('keydown'));
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        targetInput.dispatchEvent(enterEvent('keypress'));
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        targetInput.dispatchEvent(enterEvent('keyup'));
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Try to submit form if exists
+        if (targetInput.form) {
+          targetInput.form.dispatchEvent(new Event('submit', { bubbles: true }));
+        }
+
+        return 'success';
+      }
+
+      injectBarcode().then(result => result);
       ''';
 
         final result = await webViewController!.evaluateJavascript(source: jsCode);
         print('Barcode injection result: $result');
 
-        // Show success message
         Fluttertoast.showToast(
           msg: _currentLanguageFlag == 2
               ? "バーコードが入力されました: $barcode"
