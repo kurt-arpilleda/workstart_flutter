@@ -1021,7 +1021,6 @@ button.style.cssText = `
                 InAppWebView(
                   initialUrlRequest: URLRequest(url: WebUri(_webUrl!)),
                   initialSettings: InAppWebViewSettings(
-                    // ... your existing settings
                     mediaPlaybackRequiresUserGesture: false,
                     javaScriptEnabled: true,
                     useHybridComposition: true,
