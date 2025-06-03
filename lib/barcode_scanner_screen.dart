@@ -179,28 +179,6 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
             fontSize: _currentLanguageFlag == 2 ? 18.0 : 20.0,
           ),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _torchEnabled ? Icons.flash_on : Icons.flash_off,
-              color: Colors.white,
-            ),
-            onPressed: _toggleTorch,
-            tooltip: _torchEnabled ? _flashOffTooltip : _flashOnTooltip,
-          ),
-          IconButton(
-            icon: Icon(
-              _cameraFacing == CameraFacing.back
-                  ? Icons.camera_front
-                  : Icons.camera_rear,
-              color: Colors.white,
-            ),
-            onPressed: _switchCamera,
-            tooltip: _cameraFacing == CameraFacing.back
-                ? _frontCameraTooltip
-                : _rearCameraTooltip,
-          ),
-        ],
       ),
       body: Stack(
         children: [
@@ -230,6 +208,54 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
+            ),
+          ),
+          // Positioned torch and camera switch buttons at the bottom
+          Positioned(
+            bottom: 40,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Torch button
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: Icon(
+                      _torchEnabled ? Icons.flash_on : Icons.flash_off,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                    onPressed: _toggleTorch,
+                    tooltip: _torchEnabled ? _flashOffTooltip : _flashOnTooltip,
+                  ),
+                ),
+                SizedBox(width: 40),
+                // Camera switch button
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: Icon(
+                      _cameraFacing == CameraFacing.back
+                          ? Icons.camera_front
+                          : Icons.camera_rear,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                    onPressed: _switchCamera,
+                    tooltip: _cameraFacing == CameraFacing.back
+                        ? _frontCameraTooltip
+                        : _rearCameraTooltip,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
