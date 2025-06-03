@@ -453,56 +453,60 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
     if (webViewController != null) {
       try {
         String jsCode = '''
-      async function injectBarcode() {
-        const activeElement = document.activeElement;
-        const inputs = document.querySelectorAll('input[type="text"], input[type="search"], input[type="number"], textarea');
-        const targetInput = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') 
-          ? activeElement 
-          : inputs.length > 0 ? inputs[0] : null;
+    async function injectBarcode() {
+      const activeElement = document.activeElement;
+      const inputs = document.querySelectorAll('input[type="text"], input[type="search"], input[type="number"], textarea');
+      const targetInput = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') 
+        ? activeElement 
+        : inputs.length > 0 ? inputs[0] : null;
 
-        if (!targetInput) return 'no_input_found';
+      if (!targetInput) return 'no_input_found';
 
-        // Focus and set value
-        targetInput.focus();
-        targetInput.value = '$barcode';
+      // Focus and set value
+      targetInput.focus();
+      targetInput.value = '$barcode';
 
-        // Trigger input event
-        targetInput.dispatchEvent(new Event('input', { bubbles: true }));
-        await new Promise(resolve => setTimeout(resolve, 50));
+      // Trigger input event
+      targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 50));
 
-        // Trigger change event
-        targetInput.dispatchEvent(new Event('change', { bubbles: true }));
-        await new Promise(resolve => setTimeout(resolve, 50));
+      // Trigger change event
+      targetInput.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 50));
 
-        // Create and dispatch Enter key sequence with delays
-        const enterEvent = (type) => new KeyboardEvent(type, {
-          key: 'Enter',
-          code: 'Enter',
-          keyCode: 13,
-          which: 13,
-          bubbles: true,
-          cancelable: true
-        });
+      // Create and dispatch Enter key sequence with delays
+      const enterEvent = (type) => new KeyboardEvent(type, {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true,
+        cancelable: true
+      });
 
-        targetInput.dispatchEvent(enterEvent('keydown'));
-        await new Promise(resolve => setTimeout(resolve, 20));
+      targetInput.dispatchEvent(enterEvent('keydown'));
+      await new Promise(resolve => setTimeout(resolve, 20));
 
-        targetInput.dispatchEvent(enterEvent('keypress'));
-        await new Promise(resolve => setTimeout(resolve, 20));
+      targetInput.dispatchEvent(enterEvent('keypress'));
+      await new Promise(resolve => setTimeout(resolve, 20));
 
-        targetInput.dispatchEvent(enterEvent('keyup'));
-        await new Promise(resolve => setTimeout(resolve, 50));
+      targetInput.dispatchEvent(enterEvent('keyup'));
+      await new Promise(resolve => setTimeout(resolve, 50));
 
-        // Try to submit form if exists
-        if (targetInput.form) {
-          targetInput.form.dispatchEvent(new Event('submit', { bubbles: true }));
-        }
-
-        return 'success';
+      // Try to submit form if exists
+      if (targetInput.form) {
+        targetInput.form.dispatchEvent(new Event('submit', { bubbles: true }));
       }
 
-      injectBarcode().then(result => result);
-      ''';
+      // Blur the input field to close keyboard
+      await new Promise(resolve => setTimeout(resolve, 100));
+      targetInput.blur();
+
+      return 'success';
+    }
+
+    injectBarcode().then(result => result);
+    ''';
 
         final result = await webViewController!.evaluateJavascript(source: jsCode);
         print('Barcode injection result: $result');
