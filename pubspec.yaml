@@ -1,7 +1,7 @@
 name: workstart_finish
 description: "Work Start & Finish web to app"
 publish_to: 'none'
-version: 1.0.18+19
+version: 1.0.19+20
 
 environment:
   sdk: ^3.7.2
