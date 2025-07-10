@@ -49,6 +49,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
   bool _isCountryDialogShowing = false;
   bool _isCountryLoadingPh = false;
   bool _isCountryLoadingJp = false;
+  bool _isDownloadDialogShowing = false;
 
   @override
   void initState() {
@@ -345,6 +346,198 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       return true;
     }
   }
+  bool _isPdfUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return false;
+
+    if (url.toLowerCase().endsWith('.pdf')) {
+      return true;
+    }
+
+    final mimeType = lookupMimeType(url);
+    if (mimeType == 'application/pdf') {
+      return true;
+    }
+
+    if (uri.pathSegments.last.toLowerCase().contains('pdf')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<void> _launchInBrowser(String url) async {
+    if (await canLaunchUrl(Uri.parse(url))) {
+      await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+    } else {
+      Fluttertoast.showToast(
+        msg: _currentLanguageFlag == 2
+            ? "ブラウザを起動できませんでした"
+            : "Could not launch browser",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+      );
+    }
+  }
+
+  Future<void> _viewPdfInternally(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      String fileName = uri.pathSegments.last;
+      if (!fileName.toLowerCase().endsWith('.pdf')) {
+        fileName = 'document_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      }
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PDFViewerScreen(
+            pdfUrl: url,
+            fileName: fileName,
+            languageFlag: _currentLanguageFlag ?? 1,
+          ),
+        ),
+      );
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: _currentLanguageFlag == 2
+            ? "PDFを開く際にエラーが発生しました"
+            : "Error opening PDF",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+      );
+      await _launchInBrowser(url);
+    }
+  }
+
+  void _showDownloadDialog(String url, bool isPdf) {
+    SystemChannels.textInput.invokeMethod('TextInput.hide');
+    if (_isDownloadDialogShowing) return;
+
+    _isDownloadDialogShowing = true;
+
+    final uri = Uri.parse(url);
+    String fileName = uri.pathSegments.last;
+
+    if (fileName.isEmpty || fileName.length > 50) {
+      fileName = isPdf
+          ? 'document_${DateTime.now().millisecondsSinceEpoch}.pdf'
+          : 'file_${DateTime.now().millisecondsSinceEpoch}';
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: EdgeInsets.all(20),
+        height: MediaQuery.of(context).size.height * 0.35,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            SizedBox(height: 20),
+            Text(
+              _currentLanguageFlag == 2 ? 'ダウンロード' : 'Download',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 15),
+            Text(
+              _currentLanguageFlag == 2 ? 'ファイル名:' : 'File name:',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+            ),
+            SizedBox(height: 8),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                fileName,
+                style: TextStyle(fontSize: 16),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Spacer(),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text(
+                      _currentLanguageFlag == 2 ? 'キャンセル' : 'Cancel',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 15),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      if (isPdf) {
+                        await _viewPdfInternally(url);
+                      } else {
+                        await _launchInBrowser(url);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text(
+                      isPdf
+                          ? (_currentLanguageFlag == 2 ? '表示' : 'View')
+                          : (_currentLanguageFlag == 2 ? 'ダウンロード' : 'Download'),
+                      style: TextStyle(fontSize: 16, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ).then((_) {
+      // Reset the flag when dialog is dismissed
+      _isDownloadDialogShowing = false;
+    });
+  }
 
   // Function to check if a URL is a download link
   bool _isDownloadableUrl(String url) {
@@ -365,25 +558,6 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     return downloadableExtensions.any((ext) => url.toLowerCase().contains('.$ext'));
   }
 
-  // Function to launch URL in external browser
-  Future<void> _launchInBrowser(String url) async {
-    if (await canLaunchUrl(Uri.parse(url))) {
-      await launchUrl(
-        Uri.parse(url),
-        mode: LaunchMode.externalApplication,
-      );
-    } else {
-      Fluttertoast.showToast(
-        msg: _currentLanguageFlag == 2
-            ? "ブラウザを起動できませんでした"
-            : "Could not launch browser",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
-      );
-    }
-  }
   Future<void> _showInputMethodPicker() async {
     try {
       if (Platform.isAndroid) {
@@ -1222,29 +1396,15 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                   onReceivedServerTrustAuthRequest: (controller, challenge) async {
                     return ServerTrustAuthResponse(action: ServerTrustAuthResponseAction.PROCEED);
                   },
-                  onPermissionRequest: (controller, request) async {
-                    List<Permission> permissionsToRequest = [];
-
-                    if (request.resources.contains(PermissionResourceType.CAMERA)) {
-                      permissionsToRequest.add(Permission.camera);
-                    }
-                    if (request.resources.contains(PermissionResourceType.MICROPHONE)) {
-                      permissionsToRequest.add(Permission.microphone);
-                    }
-
-                    Map<Permission, PermissionStatus> statuses = await permissionsToRequest.request();
-                    bool allGranted = statuses.values.every((status) => status.isGranted);
-
-                    return PermissionResponse(
-                      resources: request.resources,
-                      action: allGranted ? PermissionResponseAction.GRANT : PermissionResponseAction.DENY,
-                    );
-                  },
                   shouldOverrideUrlLoading: (controller, navigationAction) async {
                     final url = navigationAction.request.url?.toString() ?? '';
-
+                    final isPdf = _isPdfUrl(url);
                     if (_isDownloadableUrl(url)) {
                       await _launchInBrowser(url);
+                      return NavigationActionPolicy.CANCEL;
+                    }
+                    if (isPdf || lookupMimeType(url) != null) {
+                      _showDownloadDialog(url, isPdf);
                       return NavigationActionPolicy.CANCEL;
                     }
 
@@ -1252,7 +1412,9 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                     return NavigationActionPolicy.CANCEL;
                   },
                   onDownloadStartRequest: (controller, downloadStartRequest) async {
-                    await _launchInBrowser(downloadStartRequest.url.toString());
+                    final url = downloadStartRequest.url.toString();
+                    final isPdf = _isPdfUrl(url);
+                    _showDownloadDialog(url, isPdf);
                   },
                 ),
               if (_isLoading)
