@@ -15,7 +15,8 @@ import 'package:mime/mime.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:unique_identifier/unique_identifier.dart';
-import '../barcode_scanner_screen.dart';
+// import '../barcode_scanner_screen.dart';
+import '../vincent_barcodescanner.dart';
 
 class SoftwareWebViewScreenJP extends StatefulWidget {
   final int linkID;
@@ -430,7 +431,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => const BarcodeScannerScreen(),
+          builder: (context) => const BarcodeScannerScreen2(),
         ),
       );
 

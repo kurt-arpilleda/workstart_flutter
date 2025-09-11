@@ -30,6 +30,11 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
       BarcodeFormat.aztec,
       BarcodeFormat.dataMatrix,
     ],
+
+    //Vincent New Code Start
+    //detection mode for optimization for challenging conditions
+    detectionSpeed: DetectionSpeed.normal,
+    //Vincent New Code End
   );
 
   bool _screenOpened = false;
@@ -40,10 +45,21 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
   String _phOrJp = "ph"; // Default to ph
 
   // Variables for threshold checking
-  final int _requiredConsecutiveScans = 3;
+  // final int _requiredConsecutiveScans = 3;
+  final int _requiredConsecutiveScans = 3; // Set to 2 for testing
   String? _lastScannedCode;
   int _consecutiveScanCount = 0;
   Timer? _scanResetTimer;
+  //Vincent New Code Start - july 11
+  bool _scanCooldown = false; // Prevents double reads
+  //Vincent New Code End - jul 11
+
+  //Vincent New Code Start
+  Map<String, int> _potentialCodes = {};
+  final int _confidenceThreshold = 3;
+  final int _confidenceWindow = 1500;
+  Timer? _confidenceResetTimer;
+  //Vincent New Code End
 
   @override
   void initState() {
@@ -51,6 +67,13 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     _loadPreferences();
     _startListening();
     _torchEnabled = cameraController.torchEnabled;
+
+    //Vincent New Code Start
+    // Start confidence window timer
+    _confidenceResetTimer = Timer.periodic(Duration(milliseconds: _confidenceWindow), (_) {
+      _potentialCodes.clear();
+    });
+    //Vincent New Code End
   }
 
   Future<void> _loadPreferences() async {
@@ -69,6 +92,9 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
   void dispose() {
     _subscription?.cancel();
     _scanResetTimer?.cancel();
+    //New Vincent Code Start
+    _confidenceResetTimer?.cancel();
+    //New Vincent Code End
     cameraController.dispose();
     super.dispose();
   }
@@ -86,8 +112,28 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     );
   }
 
+  // New Vincent Code Start - july 11
+  // Checks if the barcode is within the overlay cutout area
+  bool _isBarcodeInOverlay(Rect? boundingBox) {
+    if (boundingBox == null) return true; // fallback if boundingBox is not available
+    // Overlay cutout size
+    const double cutOutWidth = 280;
+    const double cutOutHeight = 140;
+    final size = MediaQuery.of(context).size;
+    final double left = (size.width - cutOutWidth) / 2;
+    final double top = (size.height - cutOutHeight) / 2;
+    final Rect cutOutRect = Rect.fromLTWH(left, top, cutOutWidth, cutOutHeight);
+    return cutOutRect.overlaps(boundingBox);
+  }
+  // New Vincent Code End - july 11
+
   void _processScannedCode(String code) {
     _scanResetTimer?.cancel();
+
+    //New Vincent Code Start
+    // Add to confidence map
+    _potentialCodes[code] = (_potentialCodes[code] ?? 0) + 1;
+    //New Vincent Code End
 
     if (_lastScannedCode == code) {
       _consecutiveScanCount++;
@@ -101,11 +147,27 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
       _lastScannedCode = null;
     });
 
-    if (_consecutiveScanCount >= _requiredConsecutiveScans) {
+    // if (_consecutiveScanCount >= _requiredConsecutiveScans) {
+    //   _scanResetTimer?.cancel();
+    //   _screenOpened = true;
+    //   _foundBarcode(code);
+    // }
+
+    // New Vincent Code Start - July 11
+    // Only accept if code is seen enough times in the confidence window
+    if (_consecutiveScanCount >= _requiredConsecutiveScans &&
+        _potentialCodes[code]! >= _confidenceThreshold) {
       _scanResetTimer?.cancel();
       _screenOpened = true;
+      _scanCooldown = true;
       _foundBarcode(code);
+      // Add cooldown to prevent double reads
+      Future.delayed(const Duration(seconds: 2), () {
+        _screenOpened = false;
+        _scanCooldown = false;
+      });
     }
+    // New Vincent Code End - July 11
   }
 
   void _foundBarcode(String code) async {
@@ -191,7 +253,11 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
             borderRadius: 10,
             borderLength: 30,
             borderWidth: 10,
-            cutOutSize: 300,
+            // cutOutSize: 300,
+            //New Vincent Code Start
+            cutOutWidth: 280,
+            cutOutHeight: 140,
+            //New Vincent Code End
           ),
           Positioned(
             bottom: 100,
@@ -269,14 +335,21 @@ class CustomScannerOverlay extends StatelessWidget {
   final double borderWidth;
   final double borderRadius;
   final double borderLength;
-  final double cutOutSize;
+  // final double cutOutSize;
+
+  //New Vincent Code Start
+  final double cutOutWidth;
+  final double cutOutHeight;
+  //New Vincent Code End
 
   const CustomScannerOverlay({
     this.borderColor = Colors.red,
     this.borderWidth = 3.0,
     this.borderRadius = 0,
     this.borderLength = 40,
-    this.cutOutSize = 250,
+    // this.cutOutSize = 250,
+    this.cutOutWidth = 250,
+    this.cutOutHeight = 150,
     Key? key,
   }) : super(key: key);
 
@@ -288,11 +361,15 @@ class CustomScannerOverlay extends StatelessWidget {
         final double height = constraints.maxHeight;
         final double borderWidthSize = width / 2;
         final double borderOffset = borderWidth / 2;
-        final double _borderLength = borderLength > cutOutSize / 2 + borderWidth * 2
+        // final double _borderLength = borderLength > cutOutSize / 2 + borderWidth * 2
+        final double _borderLength = borderLength > cutOutWidth / 2 + borderWidth * 2
             ? borderWidthSize / 2
             : borderLength;
-        final double _cutOutSize = cutOutSize < width ? cutOutSize : width - borderOffset;
-
+        // final double _cutOutSize = cutOutSize < width ? cutOutSize : width - borderOffset;
+        // New Vincent Code Start
+        final double _cutOutWidth = cutOutWidth < width ? cutOutWidth : width - borderOffset;
+        final double _cutOutHeight = cutOutHeight < height ? cutOutHeight : height - borderOffset;
+        // New Vincent Code End
         return Stack(
           children: [
             Container(
@@ -300,8 +377,10 @@ class CustomScannerOverlay extends StatelessWidget {
             ),
             Center(
               child: Container(
-                width: _cutOutSize,
-                height: _cutOutSize,
+                // width: _cutOutSize,
+                width: _cutOutWidth,
+                // height: _cutOutSize,
+                height: _cutOutHeight,
                 decoration: BoxDecoration(
                   border: Border.all(
                     color: Colors.transparent,
@@ -312,8 +391,10 @@ class CustomScannerOverlay extends StatelessWidget {
               ),
             ),
             Positioned(
-              top: height / 2 - _cutOutSize / 2 - borderOffset,
-              left: width / 2 - _cutOutSize / 2 - borderOffset,
+              // top: height / 2 - _cutOutSize / 2 - borderOffset,
+              // left: width / 2 - _cutOutSize / 2 - borderOffset,
+              top: height / 2 - _cutOutHeight / 2 - borderOffset,
+              left: width / 2 - _cutOutWidth / 2 - borderOffset,
               child: CustomPaint(
                 size: Size(_borderLength + borderWidth, _borderLength + borderWidth),
                 painter: CornerPainter(
@@ -324,8 +405,10 @@ class CustomScannerOverlay extends StatelessWidget {
               ),
             ),
             Positioned(
-              top: height / 2 - _cutOutSize / 2 - borderOffset,
-              left: width / 2 + _cutOutSize / 2 - _borderLength - borderOffset,
+              // top: height / 2 - _cutOutSize / 2 - borderOffset,
+              // left: width / 2 + _cutOutSize / 2 - _borderLength - borderOffset,
+              top: height / 2 - _cutOutHeight / 2 - borderOffset,
+              left: width / 2 + _cutOutWidth / 2 - _borderLength - borderOffset,
               child: CustomPaint(
                 size: Size(_borderLength + borderWidth, _borderLength + borderWidth),
                 painter: CornerPainter(
@@ -336,8 +419,10 @@ class CustomScannerOverlay extends StatelessWidget {
               ),
             ),
             Positioned(
-              top: height / 2 + _cutOutSize / 2 - _borderLength - borderOffset,
-              left: width / 2 - _cutOutSize / 2 - borderOffset,
+              // top: height / 2 + _cutOutSize / 2 - _borderLength - borderOffset,
+              // left: width / 2 - _cutOutSize / 2 - borderOffset,
+              top: height / 2 + _cutOutHeight / 2 - _borderLength - borderOffset,
+              left: width / 2 - _cutOutWidth / 2 - borderOffset,
               child: CustomPaint(
                 size: Size(_borderLength + borderWidth, _borderLength + borderWidth),
                 painter: CornerPainter(
@@ -348,8 +433,10 @@ class CustomScannerOverlay extends StatelessWidget {
               ),
             ),
             Positioned(
-              top: height / 2 + _cutOutSize / 2 - _borderLength - borderOffset,
-              left: width / 2 + _cutOutSize / 2 - _borderLength - borderOffset,
+              // top: height / 2 + _cutOutSize / 2 - _borderLength - borderOffset,
+              // left: width / 2 + _cutOutSize / 2 - _borderLength - borderOffset,
+              top: height / 2 + _cutOutHeight / 2 - _borderLength - borderOffset,
+              left: width / 2 + _cutOutWidth / 2 - _borderLength - borderOffset,
               child: CustomPaint(
                 size: Size(_borderLength + borderWidth, _borderLength + borderWidth),
                 painter: CornerPainter(

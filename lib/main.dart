@@ -6,9 +6,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:unique_identifier/unique_identifier.dart';
 import 'api_service.dart';
 import 'japanFolder/api_serviceJP.dart';
+import 'package:flutter/services.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  //New Vincent Code Start = July 14, 2025
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+  //New Vincent Code End = July 14, 2025
   SharedPreferences prefs = await SharedPreferences.getInstance();
   String? phOrJp = prefs.getString('phorjp');
   String? deviceId = await UniqueIdentifier.serial;
