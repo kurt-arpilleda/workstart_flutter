@@ -622,68 +622,119 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
       );
     }
   }
+  Future<void> _materialBarcodeInjection() async {
+    if (webViewController != null) {
+      String testJs = '''
+function testInputFields() {
+  var results = [];
+  
+  // Check main document
+  var mainMaterialBarcode = document.querySelector('input[name="materialBarcode"], input[id="materialBarcode"]');
+  var mainLotNumber = document.querySelector('input[name="lotNumber"], input[id="lotNumber"]');
+  
+  results.push('Main materialBarcode: ' + (mainMaterialBarcode ? 'FOUND' : 'NOT FOUND'));
+  results.push('Main lotNumber: ' + (mainLotNumber ? 'FOUND' : 'NOT FOUND'));
+  
+  // Check iframes
+  var iframes = document.querySelectorAll('iframe');
+  results.push('Iframes found: ' + iframes.length);
+  
+  for (var i = 0; i < iframes.length; i++) {
+    try {
+      var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+      var iframeMaterialBarcode = iframeDoc.querySelector('input[name="materialBarcode"], input[id="materialBarcode"]');
+      var iframeLotNumber = iframeDoc.querySelector('input[name="lotNumber"], input[id="lotNumber"]');
+      
+      results.push('Iframe ' + i + ' materialBarcode: ' + (iframeMaterialBarcode ? 'FOUND' : 'NOT FOUND'));
+      results.push('Iframe ' + i + ' lotNumber: ' + (iframeLotNumber ? 'FOUND' : 'NOT FOUND'));
+    } catch (e) {
+      results.push('Iframe ' + i + ' error: ' + e.toString());
+    }
+  }
+  
+  return results.join(' | ');
+}
 
+testInputFields();
+''';
+
+      try {
+        final result = await webViewController!.evaluateJavascript(source: testJs);
+        print('Field detection test: $result');
+      } catch (e) {
+        print('Test error: $e');
+      }
+    }
+  }
   Future<void> _injectBarcodeIntoWebView(String barcode) async {
     if (webViewController != null) {
       try {
         String jsCode = '''
-    async function injectBarcode() {
-      const activeElement = document.activeElement;
-      const inputs = document.querySelectorAll('input[type="text"], input[type="search"], input[type="number"], textarea');
-      const targetInput = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') 
-        ? activeElement 
-        : inputs.length > 0 ? inputs[0] : null;
-
-      if (!targetInput) return 'no_input_found';
-
-      // Focus and set value
-      targetInput.focus();
-      targetInput.value = '$barcode';
-
-      // Trigger input event
-      targetInput.dispatchEvent(new Event('input', { bubbles: true }));
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      // Trigger change event
-      targetInput.dispatchEvent(new Event('change', { bubbles: true }));
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      // Create and dispatch Enter key sequence with delays
-      const enterEvent = (type) => new KeyboardEvent(type, {
-        key: 'Enter',
-        code: 'Enter',
-        keyCode: 13,
-        which: 13,
-        bubbles: true,
-        cancelable: true
-      });
-
-      targetInput.dispatchEvent(enterEvent('keydown'));
-      await new Promise(resolve => setTimeout(resolve, 20));
-
-      targetInput.dispatchEvent(enterEvent('keypress'));
-      await new Promise(resolve => setTimeout(resolve, 20));
-
-      targetInput.dispatchEvent(enterEvent('keyup'));
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      // Try to submit form if exists
-      if (targetInput.form) {
-        targetInput.form.dispatchEvent(new Event('submit', { bubbles: true }));
+function setBarcodeValue(barcode) {
+  console.log('Attempting to set barcode:', barcode);
+  
+  // Try materialBarcode in main document
+  var materialBarcode = document.querySelector('input[name="materialBarcode"], input[id="materialBarcode"]');
+  if (materialBarcode) {
+    console.log('Found materialBarcode in main document');
+    materialBarcode.value = barcode;
+    materialBarcode.dispatchEvent(new Event('input', { bubbles: true }));
+    materialBarcode.dispatchEvent(new Event('change', { bubbles: true }));
+    return 'materialBarcode_main';
+  }
+  
+  // Try materialBarcode in iframes
+  var iframes = document.querySelectorAll('iframe');
+  for (var i = 0; i < iframes.length; i++) {
+    try {
+      var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+      var iframeMaterialBarcode = iframeDoc.querySelector('input[name="materialBarcode"], input[id="materialBarcode"]');
+      if (iframeMaterialBarcode) {
+        console.log('Found materialBarcode in iframe');
+        iframeMaterialBarcode.value = barcode;
+        iframeMaterialBarcode.dispatchEvent(new Event('input', { bubbles: true }));
+        iframeMaterialBarcode.dispatchEvent(new Event('change', { bubbles: true }));
+        return 'materialBarcode_iframe';
       }
-
-      // Blur the input field to close keyboard
-      await new Promise(resolve => setTimeout(resolve, 100));
-      targetInput.blur();
-
-      return 'success';
+    } catch (e) {
+      console.log('Cannot access iframe:', e);
     }
+  }
+  
+  // Fallback to lotNumber
+  var lotNumber = document.querySelector('input[name="lotNumber"], input[id="lotNumber"]');
+  if (lotNumber) {
+    console.log('Found lotNumber as fallback');
+    lotNumber.value = barcode;
+    lotNumber.dispatchEvent(new Event('input', { bubbles: true }));
+    lotNumber.dispatchEvent(new Event('change', { bubbles: true }));
+    return 'lotNumber_main';
+  }
+  
+  // Fallback to lotNumber in iframes
+  for (var i = 0; i < iframes.length; i++) {
+    try {
+      var iframeDoc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+      var iframeLotNumber = iframeDoc.querySelector('input[name="lotNumber"], input[id="lotNumber"]');
+      if (iframeLotNumber) {
+        console.log('Found lotNumber in iframe as fallback');
+        iframeLotNumber.value = barcode;
+        iframeLotNumber.dispatchEvent(new Event('input', { bubbles: true }));
+        iframeLotNumber.dispatchEvent(new Event('change', { bubbles: true }));
+        return 'lotNumber_iframe';
+      }
+    } catch (e) {
+      console.log('Cannot access iframe for lotNumber:', e);
+    }
+  }
+  
+  return 'not_found';
+}
 
-    injectBarcode().then(result => result);
-    ''';
+setBarcodeValue('$barcode');
+''';
 
-        final result = await webViewController!.evaluateJavascript(source: jsCode);
-        print('Barcode injection result: $result');
+        await webViewController!.evaluateJavascript(source: jsCode);
 
         Fluttertoast.showToast(
           msg: _currentLanguageFlag == 2
@@ -714,102 +765,80 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
     if (webViewController != null) {
       String jsCode = '''
 (function() {
-  let button;
-  let container;
-
-  function isVisible(elem) {
-    if (!elem || elem.offsetParent === null) return false;
+  function addBarcodeButton(input) {
+    if (!input || input.dataset.hasBarcodeButton) return;
     
-    const rect = elem.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
+    input.dataset.hasBarcodeButton = 'true';
     
-    const topElem = document.elementFromPoint(centerX, centerY);
-    return topElem === elem || elem.contains(topElem);
-  }
-
-  function updateBarcodeScannerButton() {
-    const input = document.getElementById('lotNumber');
-    if (!input) return;
-
-    const shouldShow = isVisible(input);
-
-    // If it should be visible and not already added
-    if (shouldShow && !input.dataset.hasBarcodeButton) {
-      input.dataset.hasBarcodeButton = 'true';
-
-      container = document.createElement('div');
-      container.style.position = 'relative';
-      container.style.display = 'inline-block';
-      container.style.width = '100%';
-
+    const container = document.createElement('div');
+    container.style.position = 'relative';
+    container.style.display = 'inline-block';
+    container.style.width = '100%';
+    
+    if (input.parentNode) {
       input.parentNode.insertBefore(container, input);
       container.appendChild(input);
-
-      button = document.createElement('div');
-      button.innerHTML = '𝄃𝄂𝄂𝄀𝄁𝄃';
-      button.style.cssText = \`
-        position: absolute;
-        right: 8px;
-        top: 50%;
-        transform: translateY(-50%);
-        z-index: 9999;
-        background: #3452B4;
-        color: white;
-        padding: 0 4px;
-        border-radius: 4px;
-        font-size: 10px;
-        cursor: pointer;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-        font-family: Arial, sans-serif;
-        height: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      \`;
-
-      button.onclick = function(e) {
-        e.stopPropagation();
-        window.flutter_inappwebview.callHandler('openBarcodeScanner');
-      };
-
-      container.appendChild(button);
     }
-
-    // If the input is now hidden or behind modal, remove the button
-    if (!shouldShow && button && container && container.parentNode) {
-      input.removeAttribute('data-has-barcode-button');
-      container.parentNode.insertBefore(input, container);
-      container.remove();
-      button = null;
-      container = null;
-    }
+    
+    const button = document.createElement('div');
+    button.innerHTML = '𝄃𝄂𝄂𝄀𝄁𝄃';
+    button.style.cssText = \`
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 9999;
+      background: #3452B4;
+      color: white;
+      padding: 0 4px;
+      border-radius: 4px;
+      font-size: 10px;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      font-family: Arial, sans-serif;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    \`;
+    
+    button.onclick = function(e) {
+      e.stopPropagation();
+      window.flutter_inappwebview.callHandler('openBarcodeScanner');
+    };
+    
+    container.appendChild(button);
   }
-
-  // Initial check
-  updateBarcodeScannerButton();
-
-  // Observe DOM for changes (e.g., modal open/close)
-  const observer = new MutationObserver(function() {
-    updateBarcodeScannerButton();
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['style', 'class']
-  });
-
-  // Also check every second in case changes aren't caught by observer
-  setInterval(updateBarcodeScannerButton, 1000);
+  
+  function checkInputs() {
+    const mainLotNumber = document.getElementById('lotNumber');
+    const mainMaterialBarcode = document.getElementById('materialBarcode');
+    
+    if (mainLotNumber) addBarcodeButton(mainLotNumber);
+    if (mainMaterialBarcode) addBarcodeButton(mainMaterialBarcode);
+    
+    const iframes = document.querySelectorAll('iframe');
+    iframes.forEach(iframe => {
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        const iframeLotNumber = iframeDoc.getElementById('lotNumber');
+        const iframeMaterialBarcode = iframeDoc.getElementById('materialBarcode');
+        
+        if (iframeLotNumber) addBarcodeButton(iframeLotNumber);
+        if (iframeMaterialBarcode) addBarcodeButton(iframeMaterialBarcode);
+      } catch (e) {}
+    });
+  }
+  
+  checkInputs();
+  setInterval(checkInputs, 1000);
 })();
 ''';
 
       try {
         await webViewController!.evaluateJavascript(source: jsCode);
       } catch (e) {
-        print('Error setting up input field detection: \$e');
+        print('Error setting up input field detection: $e');
       }
     }
   }
@@ -1436,6 +1465,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreen> with Widg
                     // Setup input field detection after page loads
                     await Future.delayed(Duration(milliseconds: 1000));
                     await _setupInputFieldDetection();
+                    await _materialBarcodeInjection();
                   },
                   onProgressChanged: (controller, progress) {
                     setState(() {
