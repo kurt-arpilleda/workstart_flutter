@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -599,7 +600,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       }
     });
   }
-  Future<void> _openBarcodeScanner() async {
+  Future<void> _openBarcodeScanner({String targetField = 'lotNumber'}) async {
     try {
       final result = await Navigator.push(
         context,
@@ -609,8 +610,11 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       );
 
       if (result != null && result is String && result.isNotEmpty) {
-        // Inject the scanned code into the focused input field
-        await _injectBarcodeIntoWebView(result);
+        if (targetField == 'inventoryRemarks') {
+          await _injectBarcodeIntoInventoryRemarks(result);
+        } else {
+          await _injectBarcodeIntoWebView(result);
+        }
       }
     } catch (e) {
       print('Error opening barcode scanner: $e');
@@ -627,29 +631,26 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
   Future<void> _injectBarcodeIntoWebView(String barcode) async {
     if (webViewController != null) {
       try {
+        final encodedBarcode = jsonEncode(barcode);
         String jsCode = '''
     async function injectBarcode() {
       const activeElement = document.activeElement;
       const inputs = document.querySelectorAll('input[type="text"], input[type="search"], input[type="number"], textarea');
-      const targetInput = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') 
-        ? activeElement 
+      const targetInput = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')
+        ? activeElement
         : inputs.length > 0 ? inputs[0] : null;
 
       if (!targetInput) return 'no_input_found';
 
-      // Focus and set value
       targetInput.focus();
-      targetInput.value = '$barcode';
+      targetInput.value = $encodedBarcode;
 
-      // Trigger input event
       targetInput.dispatchEvent(new Event('input', { bubbles: true }));
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      // Trigger change event
       targetInput.dispatchEvent(new Event('change', { bubbles: true }));
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      // Create and dispatch Enter key sequence with delays
       const enterEvent = (type) => new KeyboardEvent(type, {
         key: 'Enter',
         code: 'Enter',
@@ -668,12 +669,10 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
       targetInput.dispatchEvent(enterEvent('keyup'));
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      // Try to submit form if exists
       if (targetInput.form) {
         targetInput.form.dispatchEvent(new Event('submit', { bubbles: true }));
       }
 
-      // Blur the input field to close keyboard
       await new Promise(resolve => setTimeout(resolve, 100));
       targetInput.blur();
 
@@ -695,9 +694,73 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
           backgroundColor: Colors.green,
           textColor: Colors.white,
         );
-
       } catch (e) {
         print('Error injecting barcode: $e');
+        Fluttertoast.showToast(
+          msg: _currentLanguageFlag == 2
+              ? "バーコードの入力に失敗しました"
+              : "Failed to enter barcode",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+        );
+      }
+    }
+  }
+
+  Future<void> _injectBarcodeIntoInventoryRemarks(String barcode) async {
+    if (webViewController != null) {
+      try {
+        final encodedBarcode = jsonEncode(barcode);
+        String jsCode = '''
+    async function injectInventoryRemarksBarcode() {
+      const barcode = $encodedBarcode;
+
+      function applyValue(targetInput) {
+        if (!targetInput) return false;
+        targetInput.focus();
+        targetInput.value = barcode;
+        targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+        targetInput.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+
+      if (applyValue(document.getElementById('inventoryRemarks'))) {
+        return 'success:main';
+      }
+
+      const iframes = document.querySelectorAll('iframe');
+      for (const frame of iframes) {
+        try {
+          const frameDoc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+          if (!frameDoc) continue;
+          if (applyValue(frameDoc.getElementById('inventoryRemarks'))) {
+            return 'success:iframe';
+          }
+        } catch (e) {}
+      }
+
+      return 'no_inventory_remarks_found';
+    }
+
+    injectInventoryRemarksBarcode().then(result => result);
+    ''';
+
+        final result = await webViewController!.evaluateJavascript(source: jsCode);
+        print('Inventory remarks injection result: $result');
+
+        Fluttertoast.showToast(
+          msg: _currentLanguageFlag == 2
+              ? "バーコードが入力されました: $barcode"
+              : "Barcode entered: $barcode",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.green,
+          textColor: Colors.white,
+        );
+      } catch (e) {
+        print('Error injecting inventory remarks barcode: $e');
         Fluttertoast.showToast(
           msg: _currentLanguageFlag == 2
               ? "バーコードの入力に失敗しました"
@@ -715,84 +778,132 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     if (webViewController != null) {
       String jsCode = '''
 (function() {
-  let button;
-  let container;
-
   function isVisible(elem) {
     if (!elem || elem.offsetParent === null) return false;
-    
+
+    const doc = elem.ownerDocument || document;
     const rect = elem.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
-    
-    const topElem = document.elementFromPoint(centerX, centerY);
-    return topElem === elem || elem.contains(topElem);
+    const topElem = doc.elementFromPoint(centerX, centerY);
+
+    return topElem === elem || (topElem && elem.contains(topElem));
   }
 
-  function updateBarcodeScannerButton() {
-    const input = document.getElementById('lotNumber');
-    if (!input) return;
+  function getTargetsFromDocument(doc) {
+    const targets = [];
+    const lotNumber = doc.getElementById('lotNumber');
+    const inventoryRemarks = doc.getElementById('inventoryRemarks');
 
-    const shouldShow = isVisible(input);
-
-    // If it should be visible and not already added
-    if (shouldShow && !input.dataset.hasBarcodeButton) {
-      input.dataset.hasBarcodeButton = 'true';
-
-      container = document.createElement('div');
-      container.style.position = 'relative';
-      container.style.display = 'inline-block';
-      container.style.width = '100%';
-
-      input.parentNode.insertBefore(container, input);
-      container.appendChild(input);
-
-      button = document.createElement('div');
-      button.innerHTML = '𝄃𝄂𝄂𝄀𝄁𝄃';
-      button.style.cssText = \`
-        position: absolute;
-        right: 8px;
-        top: 50%;
-        transform: translateY(-50%);
-        z-index: 9999;
-        background: #3452B4;
-        color: white;
-        padding: 0 4px;
-        border-radius: 4px;
-        font-size: 10px;
-        cursor: pointer;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-        font-family: Arial, sans-serif;
-        height: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      \`;
-
-      button.onclick = function(e) {
-        e.stopPropagation();
-        window.flutter_inappwebview.callHandler('openBarcodeScanner');
-      };
-
-      container.appendChild(button);
+    if (lotNumber) {
+      targets.push({ input: lotNumber, targetField: 'lotNumber' });
     }
 
-    // If the input is now hidden or behind modal, remove the button
-    if (!shouldShow && button && container && container.parentNode) {
-      input.removeAttribute('data-has-barcode-button');
-      container.parentNode.insertBefore(input, container);
-      container.remove();
-      button = null;
-      container = null;
+    if (inventoryRemarks) {
+      targets.push({ input: inventoryRemarks, targetField: 'inventoryRemarks' });
     }
+
+    return targets;
   }
 
-  // Initial check
-  updateBarcodeScannerButton();
+  function getAllTargets() {
+    const targets = getTargetsFromDocument(document);
+    const iframes = document.querySelectorAll('iframe');
 
-  // Observe DOM for changes (e.g., modal open/close)
+    iframes.forEach((frame) => {
+      try {
+        const frameDoc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+        if (frameDoc) {
+          targets.push(...getTargetsFromDocument(frameDoc));
+        }
+      } catch (e) {}
+    });
+
+    return targets;
+  }
+
+  function addButton(input, targetField) {
+    if (!input || input.dataset.hasBarcodeButton === 'true') return;
+
+    const doc = input.ownerDocument || document;
+    const container = doc.createElement('div');
+    const containerId = 'barcode-container-' + Math.random().toString(36).slice(2);
+
+    container.style.position = 'relative';
+    container.style.display = 'inline-block';
+    container.style.width = '100%';
+    container.setAttribute('data-barcode-container-id', containerId);
+
+    input.parentNode.insertBefore(container, input);
+    container.appendChild(input);
+
+    const button = doc.createElement('div');
+    button.innerHTML = '𝄃𝄂𝄂𝄀𝄁𝄃';
+    button.style.cssText = `
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 9999;
+      background: #3452B4;
+      color: white;
+      padding: 0 4px;
+      border-radius: 4px;
+      font-size: 10px;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      font-family: Arial, sans-serif;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+
+    button.onclick = function(e) {
+      e.stopPropagation();
+      window.flutter_inappwebview.callHandler('openBarcodeScanner', targetField);
+    };
+
+    container.appendChild(button);
+    input.dataset.hasBarcodeButton = 'true';
+    input.dataset.barcodeContainerId = containerId;
+  }
+
+  function removeButton(input) {
+    if (!input || input.dataset.hasBarcodeButton !== 'true') return;
+
+    const doc = input.ownerDocument || document;
+    const containerId = input.dataset.barcodeContainerId;
+    if (containerId) {
+      const container = doc.querySelector('[data-barcode-container-id="' + containerId + '"]');
+      if (container && container.parentNode) {
+        container.parentNode.insertBefore(input, container);
+        container.remove();
+      }
+    }
+
+    input.removeAttribute('data-has-barcode-button');
+    input.removeAttribute('data-barcode-container-id');
+  }
+
+  function updateBarcodeScannerButtons() {
+    const targets = getAllTargets();
+
+    targets.forEach(({ input, targetField }) => {
+      if (isVisible(input)) {
+        addButton(input, targetField);
+      } else {
+        removeButton(input);
+      }
+    });
+  }
+
+  updateBarcodeScannerButtons();
+
   const observer = new MutationObserver(function() {
-    updateBarcodeScannerButton();
+    updateBarcodeScannerButtons();
   });
 
   observer.observe(document.body, {
@@ -802,8 +913,7 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     attributeFilter: ['style', 'class']
   });
 
-  // Also check every second in case changes aren't caught by observer
-  setInterval(updateBarcodeScannerButton, 1000);
+  setInterval(updateBarcodeScannerButtons, 1000);
 })();
 ''';
 
@@ -1304,7 +1414,10 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
                     controller.addJavaScriptHandler(
                       handlerName: 'openBarcodeScanner',
                       callback: (args) {
-                        _openBarcodeScanner();
+                        final targetField = args.isNotEmpty && args.first is String
+                            ? args.first as String
+                            : 'lotNumber';
+                        _openBarcodeScanner(targetField: targetField);
                       },
                     );
                   },
@@ -1415,3 +1528,4 @@ class _SoftwareWebViewScreenState extends State<SoftwareWebViewScreenJP> with Wi
     );
   }
 }
+
